@@ -5,18 +5,10 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
-from 扫描器.test.scanner_core import extract_features, build_prompt, call_llm
-
-API_KEY = "sk-d6ffb63fc74443879a87a9995821bfaf"
-API_URL = "https://api.deepseek.com/v1/chat/completions"
-MODEL = "deepseek-flash"
-
-
-
-
+from scanner_core import extract_features, build_prompt, call_llm
 
 def save_report(source: str, features: dict, analysis: dict) -> Path:
-    output_dir = Path("../output")
+    output_dir = Path("output")
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     path = output_dir / f"report_{timestamp}.json"
@@ -71,7 +63,7 @@ class ScannerApp:
         frame_btn.pack(fill="x")
         self.btn = ttk.Button(frame_btn, text="开始分析", command=self.start_scan)
         self.btn.pack(side="left", padx=5)
-        ttk.Button(frame_btn, text="打开输出目录", command=lambda: os.startfile("../output")).pack(side="left", padx=5)
+        ttk.Button(frame_btn, text="打开输出目录", command=lambda: os.startfile("output")).pack(side="left", padx=5)
 
         # 状态 + 日志
         self.status_var = tk.StringVar(value="就绪 — 请选择 HTML 文件后点击「开始分析」")

@@ -5,7 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # 这里放你的API Key
-API_KEY = "sk-d6ffb63fc74443879a87a9995821bfaf"
+API_KEY = "sk-f839e95cebe54e73aa13a6b323c49f2e"
 API_URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = "deepseek-flash"
 

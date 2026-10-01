@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scanner_core import extract_features
+from 扫描器.scanner_core import extract_features
 
 def test_extract_forms():
     """测试能否正确提取表单和输入框"""
