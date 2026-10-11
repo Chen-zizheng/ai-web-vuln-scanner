@@ -12,3 +12,12 @@
 - GUI 界面 + 多线程异步扫描，报告自动落盘 JSON + Markdown
 
 ## 如何运行
+
+1. 安装依赖:
+pip install -r requirements.txt
+
+2. 配置环境变量:
+export DEEPSEEK_API_KEY='你的API密钥' (Windows: set DEEPSEEK_API_KEY=你的API密钥)
+
+3. 运行程序:
+python main.py
