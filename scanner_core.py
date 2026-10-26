@@ -27,7 +27,8 @@ def extract_features(html: str) -> dict:
     script_blocks = [s.get_text() for s in soup.find_all("script") if s.get_text().strip()]
     inline_events = re.findall(r'on\w+\s*=\s*["\'][^"\']{0,200}["\']', html, re.IGNORECASE)
     suspicious_patterns = re.findall(
-        r'(?:innerHTML|document\.write|eval\(|setTimeout\(|setInterval\(|\.src\s*=)',
+        r'(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write|\.html\(|srcdoc|javascript:'
+        r'|eval\(|setTimeout\(|setInterval\(|\.src\s*=|\.setAttribute\(\s*["\']on)',
         html, re.IGNORECASE
     )
 

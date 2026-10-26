@@ -26,3 +26,22 @@ def test_empty_html():
     features = extract_features("")
     assert features["forms"] == []
     assert features["script_blocks"] == []
+
+def test_extract_new_sinks():
+    """新增 sink 覆盖：insertAdjacentHTML / jQuery .html() / srcdoc / javascript: URI"""
+    cases = [
+        ('<script>el.insertAdjacentHTML("beforeend", x);</script>', "insertAdjacentHTML"),
+        ('<script>$("#d").html(x);</script>', ".html("),
+        ('<iframe srcdoc="x"></iframe>', "srcdoc"),
+        ('<a href="javascript:alert(1)">x</a>', "javascript:"),
+        ("<script>el.setAttribute('onclick', x);</script>", ".setAttribute('on"),
+    ]
+    for html, expected in cases:
+        patterns = extract_features(html)["suspicious_patterns"]
+        assert expected in patterns, "未识别 sink: %s -> %r" % (expected, patterns)
+
+
+def test_safe_writer_still_not_flagged():
+    """textContent 是安全写入，不应进入 sink 列表"""
+    patterns = extract_features('<script>el.textContent = userInput;</script>')["suspicious_patterns"]
+    assert patterns == []
