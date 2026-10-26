@@ -25,15 +25,16 @@
 
 ```bash
 pip install -r requirements.txt pytest
-pytest -q          # 16 passed
+pytest -q          # 32 passed
 ```
 
-**16 个用例，分两组：**
+**32 个用例，分三组：**
 
 | 文件 | 用例数 | 覆盖对象 |
 |---|---|---|
 | `test_scanner.py` | 3 | `extract_features`：表单与输入框提取、`innerHTML` 等危险函数识别、空页面不抛异常 |
 | `test_llm_pipeline.py` | 13 | `build_prompt` + `call_llm`：提示词契约、鉴权头、超时、输出解析与降级 |
+| `test_eval.py` | 16 | 评测指标、数据集完整性、基线后端不发起网络请求 |
 
 `test_llm_pipeline.py` 用 `monkeypatch` 替换 `requests.post`，**不发真实网络请求**，
 因此可以跑在 CI 的无网环境里，也不消耗 API 额度。它覆盖的是模型调用最容易出事的几条路径：
@@ -51,6 +52,36 @@ pytest -q          # 16 passed
 - `extract_features` 的正则对 `javascript:void(0)` 这类写法不敏感——它不在当前 6 个模式内
 - 没有针对真实 DeepSeek 接口的集成测试（需要额度，故意不放进 CI）
 - 没有覆盖率门槛，也没有 UI 层测试
+
+## 评测
+
+测试回答「代码会不会崩」，评测回答「**判得准不准**」。
+
+`eval/dataset.jsonl` 是 50 条人工编写并标注的 HTML 片段（22 正 / 28 负），标注规则写在
+[`eval/README.md`](eval/README.md) 里，任何人可以按同样规则复核。其中 16 条是刻意设计的干扰项：
+**有 sink 但数据源不可控**（`innerHTML` 写常量、`eval` 求常量、`src` 指向 CDN……）。
+
+```bash
+python eval.py                      # 规则基线，离线，不花钱
+python eval.py --backend deepseek   # 真实调用模型（需 DEEPSEEK_API_KEY）
+```
+
+规则基线（命中 sink 即报 XSS）在 50 条上的实测结果：
+
+| 指标 | 数值 |
+|---|---|
+| 准确率 | 64.00% |
+| 精确率 | 56.67% |
+| 召回率 | 77.27% |
+| F1 | 0.6539 |
+| 误报率 | 46.43% |
+| 混淆矩阵 | TP=17 / FP=13 / TN=15 / FN=5 |
+
+误报几乎全部来自「有 sink 无 source」的干扰样本，漏报集中在 `insertAdjacentHTML`、jQuery `.html()`、
+`srcdoc`、内联事件传参这几类当前正则没覆盖的写法。
+
+**这两组错误指出了项目的真实短板**：判定需要数据流语义，而特征提取需要补齐 sink 覆盖。
+这也是为什么保留大模型这一层——纯关键词规则在这个任务上只能到 F1 0.65。
 
 ## 如何运行
 
@@ -87,7 +118,11 @@ CI 失败过的历史提交保留在 Actions 记录里，最近一次为通过�
 ```
 scanner_core.py        # 特征提取 / 提示词构造 / 模型调用
 main.py                # tkinter GUI + 多线程调度 + 报告落盘
+eval.py                # 评测脚本：规则基线 / 大模型两种后端，输出指标与报告
+eval/dataset.jsonl     # 50 条人工标注样本
+eval/README.md         # 标注规则与指标说明
 test_scanner.py        # 特征提取的单元测试
 test_llm_pipeline.py   # 提示词与模型输出解析的单元测试
+test_eval.py           # 评测指标与数据集完整性的单元测试
 requirements.txt
 ```
