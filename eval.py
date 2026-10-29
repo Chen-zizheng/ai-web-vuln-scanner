@@ -35,6 +35,7 @@ DEFAULT_DATASETS = [
     os.path.join(EVAL_DIR, "corpus-hard.jsonl"),  # 开发语料：难例与干扰项
     os.path.join(EVAL_DIR, "corpus-holdout.jsonl"),   # 第一轮留出集（已用于诊断，见 BENCHMARK.md）
     os.path.join(EVAL_DIR, "corpus-holdout2.jsonl"),  # 第二轮留出集：taint v2 冻结后新写
+    os.path.join(EVAL_DIR, "corpus-holdout3.jsonl"),  # 第三轮留出集：taint v3 冻结后新写
 ]
 DEFAULT_BACKENDS = "heuristic,taint,hybrid"
 SEMGREP_CONFIG = os.path.join(EVAL_DIR, "semgrep-xss.yaml")

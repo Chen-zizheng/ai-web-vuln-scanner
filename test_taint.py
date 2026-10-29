@@ -275,3 +275,48 @@ def test_template_layer_uses_page_env_from_other_script():
     assert len(findings) == 1
     assert findings[0]["evidence"]["sink"] == "v-html"
 
+
+# ---------------------------------------------------------------- 框架注入源
+def test_vue_route_params_in_v_html():
+    findings = hit('<div id="d" v-html="$route.params.slug"></div>')
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "v-html"
+    assert "$route.params" in findings[0]["reason"]
+
+
+def test_use_route_query_into_innerhtml():
+    html = "<script>const route = useRoute(); el.innerHTML = route.query.q;</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert "route.query" in findings[0]["reason"]
+
+
+def test_react_class_props_into_innerhtml():
+    html = "<script>el.innerHTML = this.props.html;</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert "this.props" in findings[0]["reason"]
+
+
+def test_nuxt_preloaded_state_is_source():
+    html = "<script>var s = window.__NUXT__; el.innerHTML = s.data[0].banner;</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert "__NUXT__" in findings[0]["reason"]
+
+
+def test_props_parameter_member_is_source():
+    html = "<script>function App(props) { el.innerHTML = props.html; }</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert "props" in findings[0]["reason"]
+
+
+def test_framework_source_into_textcontent_is_safe():
+    html = "<script>el.textContent = $route.query.q;</script>"
+    assert hit(html) == []
+
+
+def test_framework_source_sanitized_is_safe():
+    html = "<script>el.innerHTML = DOMPurify.sanitize(this.props.html);</script>"
+    assert hit(html) == []

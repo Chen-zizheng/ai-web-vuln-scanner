@@ -13,7 +13,8 @@ DATASET = os.path.join(HERE, "eval", "dataset.jsonl")
 HARD = os.path.join(HERE, "eval", "corpus-hard.jsonl")
 HOLDOUT = os.path.join(HERE, "eval", "corpus-holdout.jsonl")
 HOLDOUT2 = os.path.join(HERE, "eval", "corpus-holdout2.jsonl")
-CORPORA = [(DATASET, 50, 22), (HARD, 25, 16), (HOLDOUT, 12, 5), (HOLDOUT2, 16, 10)]
+HOLDOUT3 = os.path.join(HERE, "eval", "corpus-holdout3.jsonl")
+CORPORA = [(DATASET, 50, 22), (HARD, 25, 16), (HOLDOUT, 12, 5), (HOLDOUT2, 16, 10), (HOLDOUT3, 16, 10)]
 
 
 # --------------------------------------------------------------- 指标计算

@@ -16,6 +16,7 @@
 
 - 污点分析：location / cookie / localStorage / postMessage 到 innerHTML / document.write / eval 等汇点，本地完成，不联网
 - 认框架模板：Vue `v-html`、Angular `[innerHTML]`、React `dangerouslySetInnerHTML`、Svelte `{@html}`、Handlebars `{{{ }}}`、lit-html `unsafeHTML`、`setAttribute('onclick', ...)`
+- 认常见的框架注入源：`$route.query`、`this.props`、`props.x`、`window.__INITIAL_STATE__` / `__NUXT__`、`document.location`
 - 大模型补充研判：输出风险等级、触发位置、修复建议
 - tkinter 界面，扫描跑在子线程，报告自动落盘 JSON + Markdown
 
@@ -53,14 +54,14 @@ python main.py
 ## 测试
 
 ```bash
-pytest -q          # 90 passed
+pytest -q          # 97 passed
 ```
 
 | 文件 | 用例 | 覆盖 |
 |---|---|---|
 | `test_scanner.py` | 5 | 特征提取：表单与输入框、危险函数识别、空页面 |
 | `test_llm_pipeline.py` | 21 | 提示词契约、鉴权头、超时、输出解析与降级 |
-| `test_taint.py` | 37 | 污点传播、净化器、DOM 汇点与模板汇点、跨 script 不传播、同行去重 |
+| `test_taint.py` | 44 | 污点传播、净化器、DOM 汇点与模板汇点、框架注入源、跨 script 不传播、同行去重 |
 | `test_eval.py` | 27 | 指标、bootstrap 区间、McNemar、语料完整性、Semgrep 结果映射 |
 
 `test_llm_pipeline.py` 用 `monkeypatch` 顶掉 `requests.post`，不发真实请求，所以能在无网 CI 里跑，也不花额度。
@@ -72,13 +73,13 @@ pytest -q          # 90 passed
 
 - `extract_features` 的正则对 `javascript:void(0)` 这类写法不敏感，不在当前 6 个模式内
 - 没有针对真实 DeepSeek 接口的集成测试（需要额度，故意不进 CI）
-- 不识别框架注入源（`$route.query`、`this.props`、`window.__INITIAL_STATE__`），这类写法目前算漏报
+- 框架注入源只认一部分：`$route.query`、`this.props`、裸 `props.x`、`window.__INITIAL_STATE__` / `__NUXT__` / `__PRELOADED_STATE__` 等能识别；JSX 属性里的对象字面量、Svelte 的 `$page` store、Angular 的 `route.snapshot`、`window.__NEXT_DATA__` 仍漏，解构出来的 `props` 也不认
 - 不追踪对象属性访问与数组下标；例外是对象字面量里 `key: 污染值` 会传播，用来连上 Vue 的 `data`
 - 没有覆盖率门槛，也没有界面层测试
 
 ## 评测
 
-测试回答「代码会不会崩」，评测回答「判得准不准」。四套人工标注语料，标注规则见 [`eval/README.md`](eval/README.md)：
+测试回答「代码会不会崩」，评测回答「判得准不准」。五套人工标注语料，标注规则见 [`eval/README.md`](eval/README.md)：
 
 | 语料 | 条数 | 正/负 | 用途 |
 |---|---|---|---|
@@ -86,12 +87,14 @@ pytest -q          # 90 passed
 | `eval/corpus-hard.jsonl` | 25 | 16 / 9 | 开发集，难例（变量传播、模板字符串、postMessage、eval 链） |
 | `eval/corpus-holdout.jsonl` | 12 | 5 / 7 | 第一轮留出集，taint v1 冻结后写，全是框架语法 |
 | `eval/corpus-holdout2.jsonl` | 16 | 10 / 6 | 第二轮留出集，taint v2 冻结后写 |
+| `eval/corpus-holdout3.jsonl` | 16 | 10 / 6 | 第三轮留出集，taint v3 冻结后写，新的框架写法 |
 
-留出集在代码冻结之后写，写的时候不看结果。第一轮暴露的四类框架汇点已被 v2 修掉，
-所以它现在只能算开发证据，衡量 v2 的是第二轮。
+留出集在代码冻结之后写，写的时候不看结果。第一轮暴露的四类框架汇点被 v2 修掉，
+第二轮暴露的框架注入源被 v3 修掉，所以前两轮现在都只能算开发证据。
+真正衡量当前代码的只有第三轮。
 
 ```bash
-python eval.py                             # 三个后端 × 四套语料，离线，约 1 秒
+python eval.py                             # 三个后端 × 五套语料，离线，约 1 秒
 python eval.py --backends deepseek         # 需要 DEEPSEEK_API_KEY 与网络
 python eval.py --backends taint,semgrep    # 需要先 pip install semgrep
 ```
@@ -107,17 +110,22 @@ python eval.py --backends taint,semgrep    # 需要先 pip install semgrep
 | corpus-hard | 污点分析 | 100% | 100% | 1.0000 | 0% |
 | corpus-hard | 混合 | 80.00% | 100% | 0.8889 | 44.44% |
 | holdout（第一轮） | 关键词规则 | 50.00% | 80.00% | 0.6154 | 57.14% |
-| holdout（第一轮） | 污点分析 v2 | 100% | 100% | 1.0000 | 0% |
+| holdout（第一轮） | 污点分析 | 100% | 100% | 1.0000 | 0% |
 | holdout（第一轮） | 混合 | 55.56% | 100% | 0.7143 | 57.14% |
 | holdout2（第二轮） | 关键词规则 | 75.00% | 30.00% | 0.4286 | 16.67% |
-| holdout2（第二轮） | 污点分析 v2 | 100% | 80.00% | 0.8889 | 0% |
-| holdout2（第二轮） | 混合 | 90.00% | 90.00% | 0.9000 | 16.67% |
+| holdout2（第二轮） | 污点分析 | 100% | 100% | 1.0000 | 0% |
+| holdout2（第二轮） | 混合 | 90.91% | 100% | 0.9524 | 16.67% |
+| holdout3（第三轮） | 关键词规则 | 88.89% | 80.00% | 0.8421 | 16.67% |
+| holdout3（第三轮） | 污点分析 | 100% | 70.00% | 0.8235 | 0% |
+| holdout3（第三轮） | 混合 | 90.00% | 90.00% | 0.9000 | 16.67% |
 
 几点说明：
 
 - 关键词规则的误报率是结构性的：命中 `innerHTML` 就报警，而现代页面几乎都有它，开发集上 44%~46%。到了框架语料上它连召回也保不住（第二轮 30%）。
-- 开发集上的 1.0000 是自己出题自己考，只能当上限。第一轮留出集上 v1 是 0.2857，v2 补完框架汇点后是 1.0000；第二轮留出集（v2 冻结后新写）是 0.8889。
-- 第二轮漏掉的 2 条都是框架注入源（`$route.query`、`this.props`），已记入上面的已知缺口。
+- 开发集上的 1.0000 是自己出题自己考，只能当上限。
+- 第三轮是衡量当前代码的唯一一套：v1 在第一轮 0.2857，v2 在第二轮 0.8889，v3 在第三轮 0.8235。中间那两次都是在修上一轮暴露的洞，修完那一轮就不算数了。
+- 第三轮漏掉的 3 条仍然具体：JSX 属性里的对象字面量、Svelte 的 `$page` store、Angular 的 `route.snapshot`，已记入上面的已知缺口。
+- 混合后端的 0.9000 比 0.8235 高，是靠多一条误报（`ho3-012`，`DOMPurify` 净化后的模板绑定）换来的。
 - Semgrep 与 DeepSeek 两个后端还没有实测数字（前者要装 semgrep，后者要 key 与网络），在此之前不做对比结论。
 
 ## 数据边界
@@ -173,6 +181,7 @@ eval/dataset.jsonl         # 50 条开发语料
 eval/corpus-hard.jsonl     # 25 条难例
 eval/corpus-holdout.jsonl  # 12 条第一轮留出语料
 eval/corpus-holdout2.jsonl # 16 条第二轮留出语料
+eval/corpus-holdout3.jsonl # 16 条第三轮留出语料
 eval/semgrep-xss.yaml      # 与 Semgrep 对比用的规则
 eval/README.md             # 标注规则与指标说明
 test_scanner.py

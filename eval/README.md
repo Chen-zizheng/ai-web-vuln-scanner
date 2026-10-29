@@ -5,7 +5,7 @@
 没有这个目录之前，项目里只有"能用"的证据；有了它，才有"有多准"的证据。
 完整的方法、结果与局限见根目录 [BENCHMARK.md](../BENCHMARK.md)，这里只写标注规则与怎么跑。
 
-## 四套语料
+## 五套语料
 
 | 文件 | 条数 | 正/负 | 用途 |
 |---|---|---|---|
@@ -13,11 +13,12 @@
 | corpus-hard.jsonl | 25 | 16 / 9 | 开发集：难例（变量传播、模板字符串、postMessage、eval 链）与对应安全对照 |
 | corpus-holdout.jsonl | 12 | 5 / 7 | **第一轮留出集**：taint v1 冻结后写的，故意用 Vue / React / Angular 语法 |
 | corpus-holdout2.jsonl | 16 | 10 / 6 | **第二轮留出集**：taint v2 冻结后写的，Svelte / Handlebars / lit-html + 框架注入源 |
+| corpus-holdout3.jsonl | 16 | 10 / 6 | **第三轮留出集**：taint v3 冻结后写的，vue-router / props / SSR state / JSX 写法 |
 
-前两套用来开发和调参。留出集只看不调，**但卷子只能用一次**：第一轮留出集暴露了 4 类框架汇点，
-v2 正是照着它修的，所以它已降级为开发证据；衡量 v2 的是第二轮。
-留出集的分数不是用来"证明做得好"，是用来估计"换一批真实页面会掉到哪"。
-两轮都掉了、掉在哪，写在 BENCHMARK.md 里，没有藏。
+前两套用来开发和调参。留出集只看不调，**但卷子只能用一次**：第一轮暴露了 4 类框架汇点，
+v2 照着它修完；第二轮暴露了框架注入源，v3 照着它修完。所以前两轮都已降级为开发证据，
+衡量当前代码的是第三轮。留出集的分数不是用来"证明做得好"，是用来估计"换一批真实页面会掉到哪"。
+三轮都掉了、掉在哪，写在 BENCHMARK.md 里，没有藏。
 
 dataset.jsonl 的负例分两类：
 
@@ -39,9 +40,10 @@ dataset.jsonl 的负例分两类：
   Svelte `{@html}`、Handlebars `{{{ }}}`、lit-html `unsafeHTML`。
 - 记为**负例**：sink 存在但数据是常量/本地运算结果；数据来自不可控来源但经过了被认可的净化
   （textContent、escapeHtml、DOMPurify、encodeURIComponent 等）；页面无执行型 sink。
-- **框架注入源**：vue-router 的 `$route.query`、React 的 `this.props`、`window.__INITIAL_STATE__`
-  这类值不在当前来源表里，本仓库的 taint v2 抓不到——`corpus-holdout2.jsonl` 里就留了这两条，
-  它们**算漏报**，不因为"框架的锅"就改标注。这是下一版的目标，不是标注错误。
+- **框架注入源**：`$route.query`、`this.props`、裸 `props.x`、`window.__INITIAL_STATE__` / `__NUXT__` /
+  `__PRELOADED_STATE__` / `__INITIAL_DATA__` / `__APOLLO_STATE__`、`document.location` 这类值从 v3 起
+  算作来源。仍未识别的写法（JSX 属性里的对象字面量、Svelte `$page` store、Angular `route.snapshot`、
+  `window.__NEXT_DATA__`）**算漏报**，不因为"框架的锅"就改标注——`corpus-holdout3.jsonl` 里就留着它们。
 - risk_level：不可信数据直达执行上下文记 HIGH；需要一次额外交互或二次编码才可触发记 MEDIUM；
   无可执行通路记 LOW。
 
@@ -62,7 +64,7 @@ dataset.jsonl 的负例分两类：
 ## 运行
 
 ~~~bash
-# 默认：heuristic + taint + hybrid，四套语料全跑，离线，约 1 秒
+# 默认：heuristic + taint + hybrid，五套语料全跑，离线，约 1 秒
 python eval.py
 
 # 只跑某一套语料
@@ -112,19 +114,23 @@ python eval.py --backends taint,semgrep
 | corpus-hard | taint | 1.0000 | 1.0000 | 1.0000 | 0.0000 |
 | corpus-hard | hybrid | 0.8000 | 1.0000 | 0.8889 | 0.4444 |
 | holdout（第一轮） | heuristic | 0.5000 | 0.8000 | 0.6154 | 0.5714 |
-| holdout（第一轮） | taint v1 → v2 | 0.5000 → 1.0000 | 0.2000 → 1.0000 | 0.2857 → 1.0000 | 0.1429 → 0 |
+| holdout（第一轮） | taint v1 → v3 | 0.5000 → 1.0000 | 0.2000 → 1.0000 | 0.2857 → 1.0000 | 0.1429 → 0 |
 | holdout（第一轮） | hybrid | 0.5556 | 1.0000 | 0.7143 | 0.5714 |
-| **holdout2（第二轮）** | heuristic | 0.7500 | 0.3000 | 0.4286 | 0.1667 |
-| **holdout2（第二轮）** | **taint v2** | **1.0000** | **0.8000** | **0.8889** | **0.0000** |
-| **holdout2（第二轮）** | hybrid | 0.9000 | 0.9000 | 0.9000 | 0.1667 |
+| holdout2（第二轮） | heuristic | 0.7500 | 0.3000 | 0.4286 | 0.1667 |
+| holdout2（第二轮） | taint v2 → v3 | 1.0000 → 1.0000 | 0.8000 → 1.0000 | 0.8889 → 1.0000 | 0.0000 |
+| holdout2（第二轮） | hybrid | 0.9091 | 1.0000 | 0.9524 | 0.1667 |
+| **holdout3（第三轮）** | heuristic | 0.8889 | 0.8000 | 0.8421 | 0.1667 |
+| **holdout3（第三轮）** | **taint v3** | **1.0000** | **0.7000** | **0.8235** | **0.0000** |
+| **holdout3（第三轮）** | hybrid | 0.9000 | 0.9000 | 0.9000 | 0.1667 |
 
 三句话：
 
 1. 关键词规则的误报率是结构性的（两套开发集都 ≥44%），而且到了框架语料上召回直接掉到 30%。
 2. 污点分析在开发集上的 1.000 是上限，不是成绩——语料和代码出自同一人之手，这叫自证。
-3. 第一轮留出集的 0.2857 指出了 4 类框架汇点，v2 补完后在**第二轮**留出集上是 0.8889；
-   剩下 2 条漏报全是"框架注入源"（`$route.query`、`this.props`），这是下一版唯一的目标。
+3. 第一轮 0.2857 指出 4 类框架汇点，v2 补完；第二轮 0.8889 指出框架注入源，v3 补完；
+   当前代码在**第三轮**上是 0.8235，漏的 3 条是 JSX 属性对象、Svelte `$page` store、Angular `route.snapshot`。
 
 McNemar：dataset 上 heuristic vs taint p=0.0001、taint vs hybrid p=0.0002；
-corpus-hard 0.0625 / 0.1250，holdout 0.0625 / 0.1250，holdout2 上 heuristic vs hybrid p=0.0312。
+corpus-hard 0.0625 / 0.1250，holdout 0.0625 / 0.1250，holdout2 上 heuristic vs taint p=0.0078、
+heuristic vs hybrid p=0.0156，holdout3 三个对比全是 p=1.0000。
 样本太少，**不显著不等于没有差异**，只说明以现在的语料量还证明不了差异。

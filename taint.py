@@ -36,6 +36,22 @@ _MEMBER_SOURCES = {
     ("document", "cookie"): "document.cookie",
     ("document", "forms"): "document.forms",
     ("window", "name"): "window.name",
+    ("document", "location"): "document.location",
+    # 框架注入源：路由参数、组件属性、服务端注入的初始状态。
+    # 这些值同样来自 URL 或调用方，只是经过框架转了一手。
+    ("$route", "query"): "$route.query",
+    ("$route", "params"): "$route.params",
+    ("$route", "hash"): "$route.hash",
+    ("$route", "fullPath"): "$route.fullPath",
+    ("$route", "path"): "$route.path",
+    ("route", "query"): "route.query（vue-router）",
+    ("route", "params"): "route.params（vue-router）",
+    ("this", "props"): "this.props（组件属性）",
+    ("window", "__INITIAL_STATE__"): "window.__INITIAL_STATE__",
+    ("window", "__NUXT__"): "window.__NUXT__",
+    ("window", "__PRELOADED_STATE__"): "window.__PRELOADED_STATE__",
+    ("window", "__INITIAL_DATA__"): "window.__INITIAL_DATA__",
+    ("window", "__APOLLO_STATE__"): "window.__APOLLO_STATE__",
 }
 
 # 单独出现即视为来源（location 本身就是来源对象）
@@ -211,6 +227,9 @@ def _source_at(toks, i):
                 return 4, _CALL_SOURCES[pair]
             if t["v"] in _MESSAGE_RECEIVERS and nxt["v"] == "data":
                 return 3, "%s.data（postMessage）" % t["v"]
+            # 函数组件里 props 是一个裸参数，props.x 与 this.props.x 同等对待
+            if t["v"] == "props":
+                return 3, "props（组件属性）"
 
     if t["v"] in _BARE_SOURCES:
         return 1, _BARE_SOURCES[t["v"]]
