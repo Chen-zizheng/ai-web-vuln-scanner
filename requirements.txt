@@ -1,4 +1,5 @@
-# 版本号在审计时实测通过（本机 Python 3.13 + CI 的 Python 3.9）。
+# 版本号在审计时实测通过（本机 Python 3.13 + CI 的 Python 3.12）。
+# requests 2.33 与 pytest 9 都要求 Python >= 3.10，所以 CI 用 3.12。
 # 钉死版本是为了让今天和明天装出来的东西一致；升级时改这里的数字并跑一遍 pytest，
 # 不要用 pip install -U 让依赖悄悄漂移。
 requests==2.33.1

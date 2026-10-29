@@ -140,7 +140,7 @@ python main.py
 
 ## 持续集成
 
-`.github/workflows/test.yml`：每次 push 到 main 与每个 PR，都会在 Python 3.9 上跑一遍 `pytest`。
+`.github/workflows/test.yml`：每次 push 到 main 与每个 PR，都会在 Python 3.12 上跑一遍 `pytest`。
 CI 失败过的历史提交保留在 Actions 记录里，最近一次为通过状态。
 
 ## 目录结构
