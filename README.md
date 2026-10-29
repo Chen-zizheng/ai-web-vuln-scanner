@@ -12,6 +12,7 @@
 
 ## 功能
 - **污点分析**：追踪 location / cookie / localStorage / postMessage 等来源，到 innerHTML / document.write / eval 等汇点的完整通路，给出文件行号与上下文（本地完成，不联网）
+- **模板层同样认**：Vue `v-html`、Angular `[innerHTML]`、React `dangerouslySetInnerHTML`、Svelte `{@html}`、Handlebars `{{{ }}}`、lit-html `unsafeHTML`、`setAttribute('onclick', ...)`
 - 大模型补充分析：对静态分析无结论的页面做结构化研判（风险等级 / 触发位置 / 修复建议）
 - BeautifulSoup + 正则提取 4 类风险特征（表单 / 脚本块 / 内联事件 / 危险函数调用）
 - GUI 界面 + 多线程异步扫描，报告自动落盘 JSON + Markdown，结论分「已证实 / 疑似」两级
@@ -35,17 +36,17 @@
 
 ```bash
 pip install -r requirements.txt
-pytest -q          # 73 passed
+pytest -q          # 90 passed
 ```
 
-**73 个用例，分四组：**
+**90 个用例，分四组：**
 
 | 文件 | 用例数 | 覆盖对象 |
 |---|---|---|
 | `test_scanner.py` | 5 | `extract_features`：表单与输入框提取、`innerHTML` 等危险函数识别、空页面不抛异常 |
 | `test_llm_pipeline.py` | 21 | `build_prompt` + `call_llm`：提示词契约、鉴权头、超时、输出解析与降级 |
-| `test_taint.py` | 20 | 污点分析：变量传播、净化器、各类来源与汇点、跨 script 不传播、同一行去重 |
-| `test_eval.py` | 27 | 指标计算、bootstrap 区间、McNemar 检验、三套语料完整性、Semgrep 结果映射（打桩，不装也能测） |
+| `test_taint.py` | 37 | 污点分析：变量传播、净化器、DOM 汇点与模板层汇点（v-html / [innerHTML] / {@html} / {{{ }}} / unsafeHTML / setAttribute / on* 属性）、跨 script 不传播、同一行去重 |
+| `test_eval.py` | 27 | 指标计算、bootstrap 区间、McNemar 检验、四套语料完整性、Semgrep 结果映射（打桩，不装也能测） |
 
 `test_llm_pipeline.py` 用 `monkeypatch` 替换 `requests.post`，**不发真实网络请求**，
 因此可以跑在 CI 的无网环境里，也不消耗 API 额度。它覆盖的是模型调用最容易出事的几条路径：
@@ -62,23 +63,27 @@ pytest -q          # 73 passed
 
 - `extract_features` 的正则对 `javascript:void(0)` 这类写法不敏感——它不在当前 6 个模式内
 - 没有针对真实 DeepSeek 接口的集成测试（需要额度，故意不放进 CI）
-- 污点分析只覆盖原生 DOM API，**不认识 Vue / React / Angular 的模板语法**（见下一节）
+- 污点分析认识模板层汇点，但**不识别框架注入源**（`$route.query`、`this.props`、`window.__INITIAL_STATE__`），这两类写法目前算漏报
+- 不追踪对象属性访问与数组下标（例外：对象字面量里 `key: 污染值` 会传播，用来连上 Vue 的 `data`）
 - 没有覆盖率门槛，也没有 UI 层测试
 
 ## 评测
 
 测试回答「代码会不会崩」，评测回答「**判得准不准**」。
 
-三套人工标注语料，标注规则写在 [`eval/README.md`](eval/README.md) 里，任何人可以按同样规则复核：
+四套人工标注语料，标注规则写在 [`eval/README.md`](eval/README.md) 里，任何人可以按同样规则复核：
 
 - `eval/dataset.jsonl`：50 条（22 正 / 28 负），覆盖常规写法，含 16 条「有 sink 无 source」干扰项
 - `eval/corpus-hard.jsonl`：25 条（16 正 / 9 负），难例（变量传播、模板字符串、postMessage、eval 链）与安全对照
-- `eval/corpus-holdout.jsonl`：12 条（5 正 / 7 负），**代码冻结后新写的留出集**，故意用框架语法
+- `eval/corpus-holdout.jsonl`：12 条（5 正 / 7 负），**第一轮留出集**，taint v1 冻结后写的，故意用 Vue / React / Angular 语法
+- `eval/corpus-holdout2.jsonl`：16 条（10 正 / 6 负），**第二轮留出集**，taint v2 冻结后写的，Svelte / Handlebars / lit-html + 框架注入源
 
-三套语料分工明确：前两套用来开发，第三套只看不调，用来估计真实泛化水平。
+四套语料分工明确：前两套用来开发；留出集只看不调，用来估计真实泛化水平，
+**但卷子只能用一次**——第一轮留出集暴露的 4 类框架汇点已被 v2 修掉，所以它降级为开发证据，
+衡量 v2 的是第二轮留出集。
 
 ```bash
-python eval.py                       # 三个后端 × 三套语料，离线，约 1 秒
+python eval.py                       # 三个后端 × 四套语料，离线，约 1 秒
 python eval.py --backends deepseek   # 真实调用模型（需 DEEPSEEK_API_KEY）
 python eval.py --backends taint,semgrep   # 与 Semgrep 同基线（需先 pip install semgrep）
 ```
@@ -95,16 +100,22 @@ python eval.py --backends taint,semgrep   # 与 Semgrep 同基线（需先 pip i
 | corpus-hard（开发集） | 关键词规则 | 78.95% | 93.75% | 0.8572 | 44.44% |
 | corpus-hard（开发集） | **污点分析** | 100% | 100% | 1.0000 | 0% |
 | corpus-hard（开发集） | 混合 | 80.00% | 100% | 0.8889 | 44.44% |
-| holdout（留出集） | 关键词规则 | 50.00% | 80.00% | 0.6154 | 57.14% |
-| holdout（留出集） | **污点分析** | 50.00% | 20.00% | 0.2857 | 14.29% |
-| holdout（留出集） | 混合 | 44.44% | 80.00% | 0.5714 | 71.43% |
+| holdout（第一轮留出集） | 关键词规则 | 50.00% | 80.00% | 0.6154 | 57.14% |
+| holdout（第一轮留出集） | **污点分析 v2** | 100% | 100% | 1.0000 | 0% |
+| holdout（第一轮留出集） | 混合 | 55.56% | 100% | 0.7143 | 57.14% |
+| **holdout2（第二轮留出集）** | 关键词规则 | 75.00% | 30.00% | 0.4286 | 16.67% |
+| **holdout2（第二轮留出集）** | **污点分析 v2** | **100%** | **80.00%** | **0.8889** | **0%** |
+| **holdout2（第二轮留出集）** | 混合 | 90.00% | 90.00% | 0.9000 | 16.67% |
 
 三句话读完这张表：
 
-1. **关键词规则的误报率是结构性的**（两套开发集都 ≥44%），命中 `innerHTML` 就报警，而现代页面几乎都有它。
-2. **污点分析在开发集上的 1.000 是上限，不是成绩**——语料和代码出自同一人之手；留出集上的 0.2857 才是诚实起点。
-3. **留出集的漏报全部是框架语法**（Vue `v-html`、React `dangerouslySetInnerHTML`、Angular `[innerHTML]`、`setAttribute('onclick')`），
-   这是下一版最该补的四类汇点，不是「再调调正则」。
+1. **关键词规则的误报率是结构性的**（两套开发集都 ≥44%），命中 `innerHTML` 就报警，而现代页面几乎都有它；
+   到了框架语料上它连召回也保不住（第二轮 30%）。
+2. **污点分析在开发集上的 1.000 是上限，不是成绩**——语料和代码出自同一人之手；
+   第一轮留出集上 v1 只有 0.2857，这才是诚实起点。
+3. **第一轮留出集的漏报全是框架汇点**（Vue `v-html`、React `dangerouslySetInnerHTML`、Angular `[innerHTML]`、
+   `setAttribute('onclick')`），v2 补完后**在第二轮留出集上是 0.8889**；剩下 2 条全是框架注入源
+   （`$route.query`、`this.props`），这是下一版唯一的目标。
 
 **还没跑的两个后端写在 [BENCHMARK.md](BENCHMARK.md) 里，不藏**：Semgrep 需要安装（沙箱无出网），
 DeepSeek 需要 key 与网络。在这两个数字出来之前，本仓库不宣称「比 Semgrep 准」或「比纯规则准多少」。
@@ -190,7 +201,8 @@ eval.py                 # 评测：heuristic / taint / hybrid / deepseek / semgr
 BENCHMARK.md            # 基准测试的方法、结果、局限与下一步
 eval/dataset.jsonl      # 50 条开发语料
 eval/corpus-hard.jsonl  # 25 条难例开发语料
-eval/corpus-holdout.jsonl # 12 条留出语料（冻结代码后新写）
+eval/corpus-holdout.jsonl # 12 条第一轮留出语料（taint v1 冻结后新写）
+eval/corpus-holdout2.jsonl # 16 条第二轮留出语料（taint v2 冻结后新写）
 eval/semgrep-xss.yaml   # 与 Semgrep 对比用的 taint 规则
 eval/README.md          # 标注规则与指标说明
 test_scanner.py         # 特征提取的单元测试
@@ -198,5 +210,6 @@ test_llm_pipeline.py    # 提示词与模型输出解析的单元测试
 test_taint.py           # 污点分析的单元测试
 test_eval.py            # 指标、统计检验、语料完整性的单元测试
 docs/security-review/   # 对本项目的安全审计记录
+pytest.ini              # 收集范围（跳过 tmp_path 残留与生成目录）
 requirements.txt
 ```

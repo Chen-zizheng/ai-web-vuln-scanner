@@ -69,6 +69,10 @@ _METHOD_SINKS = {
     "append": ("HIGH", "jQuery .append() 解析 HTML"),
     "prepend": ("HIGH", "jQuery .prepend() 解析 HTML"),
     "insertAdjacentHTML": ("HIGH", "insertAdjacentHTML 解析 HTML"),
+    "after": ("HIGH", "jQuery .after() 解析 HTML"),
+    "before": ("HIGH", "jQuery .before() 解析 HTML"),
+    "replaceWith": ("HIGH", "jQuery .replaceWith() 解析 HTML"),
+    "wrap": ("HIGH", "jQuery .wrap() 解析 HTML"),
 }
 
 # 全局函数式汇点：eval(x) / Function(x) / setTimeout(x) / setInterval(x)
@@ -78,6 +82,7 @@ _FUNC_SINKS = {
     "open": ("MEDIUM", "window.open 的 URL 参数（可执行 javascript:）"),
     "setTimeout": ("MEDIUM", "setTimeout 字符串参数按代码执行"),
     "setInterval": ("MEDIUM", "setInterval 字符串参数按代码执行"),
+    "unsafeHTML": ("HIGH", "lit-html unsafeHTML 绕过转义按 HTML 渲染"),
 }
 
 # 见到这些函数即认为值已被净化（保守白名单，宁可漏判为安全）
@@ -85,6 +90,8 @@ _SANITIZERS = {
     "escapeHtml", "escapeHTML", "escape_html", "escapeHtmlText", "encodeHtml",
     "htmlEscape", "escapeForHtml", "sanitize", "sanitizeHtml", "sanitizeHTML",
     "DOMPurify", "filterXSS", "xss", "he", "validator", "purify",
+    # URL 编码会转义尖括号与引号，写进 HTML 上下文时不再构成注入
+    "encodeURIComponent", "encodeURI",
 }
 
 _FIX = {
@@ -103,6 +110,13 @@ _FIX = {
     "setInterval 字符串参数按代码执行": "改为传函数引用 setInterval(fn, 0)",
     "document.write 直接写入文档": "改用 DOM API（createElement/textContent）",
     "document.writeln 直接写入文档": "改用 DOM API（createElement/textContent）",
+    "Vue v-html 指令按 HTML 渲染": "改用 v-text 或双花括号插值；必须渲染 HTML 时先经 DOMPurify",
+    "Angular 属性绑定按 HTML 渲染": "改用文本绑定或插值；绕过净化需要显式声明并评审",
+    "Svelte {@html} 按 HTML 渲染": "改用普通插值；必须渲染 HTML 时先经 DOMPurify",
+    "Handlebars 三花括号不转义": "改用双花括号（自动转义）；必须渲染 HTML 时先净化",
+    "事件处理器属性赋字符串（等同于 eval）": "传函数引用，不要传字符串",
+    "setAttribute 写入事件处理器属性（等同于 eval）": "不要用 setAttribute 写 on* 属性；用 addEventListener",
+    "iframe srcdoc 的 HTML 上下文": "srcdoc 内容先净化，或改用 sandbox iframe + postMessage",
 }
 
 _PUNCTS = sorted(
@@ -301,6 +315,43 @@ def _call_args(toks, open_idx):
     return args, len(toks) - 1
 
 
+def _string_literal(toks, span):
+    """span 恰好是一个字符串字面量时返回其内容，否则 None。"""
+    if span is None or span[1] - span[0] != 1:
+        return None
+    t = toks[span[0]]
+    return t["v"] if t["k"] == "str" else None
+
+
+def _object_value_span(toks, colon_i):
+    """从冒号后取到同层的逗号/右花括号，返回表达式区间。"""
+    depth = 0
+    i = colon_i + 1
+    while i < len(toks):
+        t = toks[i]
+        if t["k"] == "punct":
+            v = t["v"]
+            if v in ("(", "[", "{"):
+                depth += 1
+            elif v in _CLOSE:
+                if depth == 0:
+                    return (colon_i + 1, i) if i > colon_i + 1 else None
+                depth -= 1
+            elif v == "," and depth == 0:
+                return (colon_i + 1, i) if i > colon_i + 1 else None
+        i += 1
+    return None
+
+
+def _value_after_key(toks, start, key, limit=60):
+    """在 start 之后找 key: expr，返回 expr 区间。用于 {__html: ...} 这类框架写法。"""
+    for j in range(start + 1, min(len(toks) - 2, start + limit)):
+        if (toks[j]["k"] == "id" and toks[j]["v"] == key
+                and toks[j + 1]["k"] == "punct" and toks[j + 1]["v"] == ":"):
+            return _object_value_span(toks, j + 1)
+    return None
+
+
 # ---------------------------------------------------------------- 传播
 def _apply_assignment(toks, i, env, stats):
     """识别 x = expr / var x = expr / x += expr，记录 x 是否被污染。返回下一个扫描位置。"""
@@ -354,8 +405,12 @@ def _finding(sink_name, level, context, taint, html, base, offset):
     }
 
 
-def _analyze_code(code, base, html, stats):
-    """分析一段 JS（脚本块正文或内联事件属性），返回发现列表。"""
+def _analyze_code(code, base, html, stats, page_env=None):
+    """分析一段 JS（脚本块正文或内联事件属性），返回发现列表。
+
+    page_env 用于把本段里被污染的变量名汇总到页面级，供模板属性那一遍使用；
+    汇点判断本身仍然只看段内环境（刻意不做跨 script 传播）。
+    """
     toks = _tokenize(code)
     findings, env = [], {}
     i = 0
@@ -373,8 +428,13 @@ def _analyze_code(code, base, html, stats):
                 and toks[i + 2]["k"] == "punct"
                 and toks[i + 2]["v"] in ("=", "+=")):
             name = toks[i + 1]["v"]
+            level = context = None
             if name in _ASSIGN_SINKS:
                 level, context = _ASSIGN_SINKS[name]
+            elif name[:2] == "on" and len(name) > 2:
+                # el.onclick = "<字符串>" 与 eval 等价
+                level, context = "HIGH", "事件处理器属性赋字符串（等同于 eval）"
+            if context:
                 end = _stmt_end(toks, i + 3)
                 taint = _taint_of(toks, i + 3, end, env)
                 stats["sinks_seen"] = stats.get("sinks_seen", 0) + 1
@@ -401,8 +461,8 @@ def _analyze_code(code, base, html, stats):
                     taint = _taint_of(toks, arg[0], arg[1], env)
                     if taint:
                         findings.append(_finding(name, level, context, taint, html, base, t["i"]))
-            i += 1
-            continue
+                i += 1
+                continue
 
         # SINK(args) —— 全局函数
         if t["k"] == "id" and t["v"] in _FUNC_SINKS and i + 1 < len(toks) and toks[i + 1]["v"] == "(":
@@ -417,7 +477,62 @@ def _analyze_code(code, base, html, stats):
                         findings.append(_finding(t["v"], level, context, taint, html, base, t["i"]))
             i += 1
             continue
+
+        # obj.setAttribute(name, value)：on* 等同于 eval，srcdoc / URL 属性看上下文
+        if (t["k"] == "punct" and t["v"] == "."
+                and i + 2 < len(toks)
+                and toks[i + 1]["k"] == "id" and toks[i + 1]["v"] == "setAttribute"
+                and toks[i + 2]["k"] == "punct" and toks[i + 2]["v"] == "("):
+            args, _e = _call_args(toks, i + 2)
+            stats["sinks_seen"] = stats.get("sinks_seen", 0) + 1
+            attr = _string_literal(toks, args[0]) if args else None
+            level = context = None
+            if attr:
+                low = attr.lower()
+                if low[:2] == "on" and len(low) > 2:
+                    level = "HIGH"
+                    context = "setAttribute 写入事件处理器属性（等同于 eval）"
+                elif low == "srcdoc":
+                    level, context = "HIGH", "iframe srcdoc 的 HTML 上下文"
+                elif low in ("href", "src", "action", "formaction", "xlink:href"):
+                    level, context = "MEDIUM", "URL 上下文（可执行 javascript:）"
+            if context and len(args) > 1:
+                taint = _taint_of(toks, args[1][0], args[1][1], env)
+                if taint:
+                    findings.append(_finding("setAttribute(%s)" % attr, level, context,
+                                             taint, html, base, t["i"]))
+            i += 1
+            continue
+
+        # React 的 dangerouslySetInnerHTML={{__html: expr}}
+        if t["k"] == "id" and t["v"] == "dangerouslySetInnerHTML":
+            stats["sinks_seen"] = stats.get("sinks_seen", 0) + 1
+            span = _value_after_key(toks, i, "__html")
+            if span:
+                taint = _taint_of(toks, span[0], span[1], env)
+                if taint:
+                    findings.append(_finding("dangerouslySetInnerHTML", "HIGH",
+                                             "HTML 解析上下文", taint, html, base, t["i"]))
+            i += 1
+            continue
+
+        # 对象字面量 {key: expr} 也传播污染：Vue 的 data:{msg: ...} 靠这条连起来
+        if (t["k"] == "id" and i + 1 < len(toks)
+                and toks[i + 1]["k"] == "punct" and toks[i + 1]["v"] == ":"
+                and i > 0 and toks[i - 1]["k"] == "punct"
+                and toks[i - 1]["v"] in ("{", ",")):
+            span = _object_value_span(toks, i + 1)
+            if span:
+                taint = _taint_of(toks, span[0], span[1], env)
+                if taint:
+                    env[t["v"]] = taint
+                    stats["tainted_vars"] = stats.get("tainted_vars", 0) + 1
         i += 1
+
+    if page_env is not None:
+        for key, val in env.items():
+            if val and not page_env.get(key):
+                page_env[key] = val
     return findings
 
 
@@ -446,17 +561,50 @@ def js_units(html):
     return units
 
 
+# 模板层汇点：框架把「表达式」写进属性值，JS 词法看不到，只能按语法逐个认。
+# 这些模式在整份 HTML 上扫（包括脚本字符串里的模板字面量，例如 Angular 的 template: '...'）。
+_TPL_SINKS = [
+    (re.compile(r"\bv-html\s*=\s*(?:\"([^\"]*)\"|'([^']*)')"), "v-html", "HIGH",
+     "Vue v-html 指令按 HTML 渲染"),
+    (re.compile(r"\[(?:innerHTML|outerHTML)\]\s*=\s*(?:\"([^\"]*)\"|'([^']*)')"),
+     "[innerHTML]", "HIGH", "Angular 属性绑定按 HTML 渲染"),
+    (re.compile(r"\[srcdoc\]\s*=\s*(?:\"([^\"]*)\"|'([^']*)')"), "[srcdoc]", "HIGH",
+     "iframe srcdoc 的 HTML 上下文"),
+    (re.compile(r"\{@html\s+([^}]*)\}"), "{@html}", "HIGH", "Svelte {@html} 按 HTML 渲染"),
+    (re.compile(r"\{\{\{([^}]*)\}\}\}"), "{{{ }}}", "HIGH",
+     "Handlebars 三花括号不转义"),
+]
+
+
+def _analyze_template(html, env, stats):
+    """扫模板层的属性汇点，用页面级变量环境判断表达式是否可控。"""
+    out = []
+    for pattern, sink, level, context in _TPL_SINKS:
+        for m in pattern.finditer(html):
+            expr = m.group(1) if m.group(1) is not None else m.group(2)
+            if not expr or not expr.strip():
+                continue
+            stats["sinks_seen"] = stats.get("sinks_seen", 0) + 1
+            toks = _tokenize(expr)
+            taint = _taint_of(toks, 0, len(toks), env)
+            if taint:
+                out.append(_finding(sink, level, context, taint, html, 0, m.start()))
+    return out
+
+
 def analyze(html):
     """对整页做污点分析，返回 {"findings": [...], "stats": {...}}。"""
-    stats = {"script_blocks": 0, "event_handlers": 0, "sinks_seen": 0, "tainted_vars": 0}
+    stats = {"script_blocks": 0, "event_handlers": 0, "sinks_seen": 0, "tainted_vars": 0,
+             "template_sinks": 0}
     findings = []
+    page_env = {}
 
     for m in _SCRIPT_RE.finditer(html):
         attrs, body = m.group(1) or "", m.group(2) or ""
         if re.search(r"\bsrc\s*=", attrs, re.IGNORECASE) or not body.strip():
             continue
         stats["script_blocks"] += 1
-        findings.extend(_analyze_code(body, m.start(2), html, stats))
+        findings.extend(_analyze_code(body, m.start(2), html, stats, page_env))
 
     for m in _EVENT_RE.finditer(html):
         body = m.group(1) if m.group(1) is not None else m.group(2)
@@ -464,7 +612,11 @@ def analyze(html):
             continue
         stats["event_handlers"] += 1
         base = m.start(1) if m.group(1) is not None else m.start(2)
-        findings.extend(_analyze_code(body, base, html, stats))
+        findings.extend(_analyze_code(body, base, html, stats, page_env))
+
+    tpl = _analyze_template(html, page_env, stats)
+    stats["template_sinks"] = len(tpl)
+    findings.extend(tpl)
 
     seen, unique = set(), []
     for f in findings:

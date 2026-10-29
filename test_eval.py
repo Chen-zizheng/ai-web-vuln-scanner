@@ -12,7 +12,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATASET = os.path.join(HERE, "eval", "dataset.jsonl")
 HARD = os.path.join(HERE, "eval", "corpus-hard.jsonl")
 HOLDOUT = os.path.join(HERE, "eval", "corpus-holdout.jsonl")
-CORPORA = [(DATASET, 50, 22), (HARD, 25, 16), (HOLDOUT, 12, 5)]
+HOLDOUT2 = os.path.join(HERE, "eval", "corpus-holdout2.jsonl")
+CORPORA = [(DATASET, 50, 22), (HARD, 25, 16), (HOLDOUT, 12, 5), (HOLDOUT2, 16, 10)]
 
 
 # --------------------------------------------------------------- 指标计算
@@ -99,7 +100,7 @@ def test_normalize_findings_wraps_parse_failure():
 
 # --------------------------------------------------------------- 数据集完整性
 def test_datasets_exist_and_are_balanced():
-    # 两套语料：dataset 覆盖常规写法，corpus-hard 覆盖难例与干扰项
+    # dataset / corpus-hard 是开发集，两套 holdout 是冻结代码后写的留出集
     for path, expected_total, expected_pos in CORPORA:
         rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
         pos = sum(1 for r in rows if r["label"]["has_xss_risk"])

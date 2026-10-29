@@ -33,7 +33,8 @@ import taint  # noqa: E402
 DEFAULT_DATASETS = [
     os.path.join(EVAL_DIR, "dataset.jsonl"),      # 开发语料：常规写法
     os.path.join(EVAL_DIR, "corpus-hard.jsonl"),  # 开发语料：难例与干扰项
-    os.path.join(EVAL_DIR, "corpus-holdout.jsonl"),  # 留出语料：冻结代码后新写，只看不调
+    os.path.join(EVAL_DIR, "corpus-holdout.jsonl"),   # 第一轮留出集（已用于诊断，见 BENCHMARK.md）
+    os.path.join(EVAL_DIR, "corpus-holdout2.jsonl"),  # 第二轮留出集：taint v2 冻结后新写
 ]
 DEFAULT_BACKENDS = "heuristic,taint,hybrid"
 SEMGREP_CONFIG = os.path.join(EVAL_DIR, "semgrep-xss.yaml")

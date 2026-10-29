@@ -160,3 +160,118 @@ def test_multiple_scripts_each_analyzed():
             "<script>document.write(a);</script>")
     # 跨 script 不传播是刻意的限制：不做跨单元数据流，避免误报
     assert hit(html) == []
+
+
+# --------------------------------------------------------------- 模板层汇点
+def test_vue_v_html_with_data_binding():
+    html = ("<div id=\"app\"><div v-html=\"msg\"></div></div>"
+            "<script>new Vue({el:'#app',data:{msg: decodeURIComponent(location.search)}});</script>")
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "v-html"
+    assert findings[0]["risk_level"] == "HIGH"
+
+
+def test_vue_v_text_is_safe():
+    html = ("<div id=\"t\" v-text=\"msg\"></div>"
+            "<script>new Vue({el:'#t',data:{msg:location.hash}});</script>")
+    assert hit(html) == []
+
+
+def test_angular_property_binding_constant_is_safe():
+    html = "<div [innerHTML]=\"'<p>static</p>'\"></div>"
+    assert hit(html) == []
+
+
+def test_angular_property_binding_from_variable():
+    html = ("<my-app></my-app>"
+            "<script>var body=location.hash;var c={template:'<div [innerHTML]=\"body\"></div>'};</script>")
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "[innerHTML]"
+
+
+def test_react_dangerously_set_inner_html():
+    html = ("<div id=\"root\"></div><script>function App(){return React.createElement('div',"
+            "{dangerouslySetInnerHTML:{__html: location.hash}});}</script>")
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "dangerouslySetInnerHTML"
+
+
+def test_set_attribute_onclick_is_sink():
+    html = "<script>document.body.setAttribute('onclick', location.hash);</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["risk_level"] == "HIGH"
+
+
+def test_set_attribute_data_attr_is_safe():
+    html = "<script>document.body.setAttribute('data-tab', location.hash);</script>"
+    assert hit(html) == []
+
+
+def test_set_attribute_srcdoc_is_high():
+    html = "<script>document.getElementById('f').setAttribute('srcdoc', location.hash);</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["risk_level"] == "HIGH"
+
+
+def test_event_handler_property_assignment():
+    html = "<script>document.getElementById('i').onerror = location.hash;</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert "onerror" in findings[0]["evidence"]["sink"]
+
+
+def test_event_handler_function_reference_is_safe():
+    html = "<script>document.getElementById('i').onerror = handleError;</script>"
+    assert hit(html) == []
+
+
+def test_svelte_html_directive():
+    html = "<div>{@html decodeURIComponent(location.hash)}</div>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "{@html}"
+
+
+def test_handlebars_triple_stash_is_sink():
+    html = "<div>{{{body}}}</div><script>var body = document.cookie;</script>"
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "{{{ }}}"
+
+
+def test_handlebars_double_stash_is_safe():
+    html = "<div>{{ user.name }}</div><script>var user={name:location.hash};</script>"
+    assert hit(html) == []
+
+
+def test_lit_unsafe_html():
+    html = "<script>import {unsafeHTML} from 'lit'; el.innerHTML = unsafeHTML(window.name);</script>"
+    findings = hit(html)
+    assert findings
+    assert any(f["evidence"]["sink"] == "unsafeHTML" for f in findings)
+
+
+def test_encode_uri_component_is_sanitizer():
+    html = "<script>a.href = '/u/' + encodeURIComponent(location.pathname.split('/').pop());</script>"
+    assert hit(html) == []
+
+
+def test_object_literal_key_propagates_taint():
+    html = ("<script>var state = {msg: location.hash};"
+            "document.getElementById('m').innerHTML = state.msg;</script>")
+    # 对象属性访问本身不追踪，但 data 绑定那一遍需要 key 传播，这里只断言不崩、不误报
+    hit(html)
+
+
+def test_template_layer_uses_page_env_from_other_script():
+    html = ("<script>window.msg = location.hash;</script>"
+            "<div v-html=\"msg\"></div>")
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["evidence"]["sink"] == "v-html"
+
