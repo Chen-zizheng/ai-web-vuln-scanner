@@ -1,11 +1,23 @@
 import os
 import json
 import datetime
+import queue
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
-from scanner_core import extract_features, build_prompt, call_llm
+from scanner_core import (extract_features, build_prompt, call_llm,
+                          prepare_features, MAX_PROMPT_CHARS)
+
+MAX_INPUT_BYTES = 2 * 1024 * 1024   # 单个待扫描页面的上限：2 MB，超了直接拒绝
+
+
+def _md_field(value, limit=500):
+    """把模型返回的任意字段压成单行纯文本，避免模型输出改写报告的 Markdown 结构。"""
+    text = str(value if value is not None else "N/A")
+    text = " ".join(text.split())
+    return text[:limit] or "N/A"
+
 
 def save_report(source: str, features: dict, analysis: dict) -> Path:
     output_dir = Path("output")
@@ -18,16 +30,16 @@ def save_report(source: str, features: dict, analysis: dict) -> Path:
 
     # 同时生成 Markdown 报告
     md_path = output_dir / f"report_{timestamp}.md"
-    md_lines = [f"# Web 漏洞分析报告\n\n**来源**: {source}\n**时间**: {report['scan_time']}\n"]
+    md_lines = [f"# Web 漏洞分析报告\n\n**来源**: {_md_field(source)}\n**时间**: {report['scan_time']}\n"]
     if isinstance(analysis, list):
         md_lines.append(f"\n共发现 **{len(analysis)}** 个风险点：\n")
         for i, item in enumerate(analysis, 1):
-            md_lines.append(f"## {i}. {item.get('vulnerability_type', '未知')} [{item.get('risk_level', '?')}]\n")
-            md_lines.append(f"- **位置**: {item.get('location', 'N/A')}\n")
-            md_lines.append(f"- **原因**: {item.get('reason', 'N/A')}\n")
-            md_lines.append(f"- **修复**: {item.get('fix_suggestion', 'N/A')}\n")
+            md_lines.append(f"## {i}. {_md_field(item.get('vulnerability_type', '未知'), 80)} [{_md_field(item.get('risk_level', '?'), 20)}]\n")
+            md_lines.append(f"- **位置**: {_md_field(item.get('location', 'N/A'))}\n")
+            md_lines.append(f"- **原因**: {_md_field(item.get('reason', 'N/A'))}\n")
+            md_lines.append(f"- **修复**: {_md_field(item.get('fix_suggestion', 'N/A'))}\n")
     else:
-        md_lines.append(f"\n{analysis}\n")
+        md_lines.append(f"\n{_md_field(analysis, 2000)}\n")
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
     return path, md_path
 
@@ -37,6 +49,10 @@ class ScannerApp:
         self.root = root
         self.root.title("AI 辅助 Web 漏洞扫描器")
         self.root.geometry("750x550")
+
+        # 工作线程不碰任何 Tk 组件：所有 UI 写操作排进队列，由主线程消费
+        self._ui_queue = queue.Queue()
+        self._pump_ui()
 
         # 文件路径
         frame_top = ttk.Frame(root, padding=10)
@@ -75,6 +91,19 @@ class ScannerApp:
         scrollbar.pack(side="right", fill="y")
         self.log.config(yscrollcommand=scrollbar.set)
 
+    # ---------- 主线程 UI 泵 ----------
+
+    def _pump_ui(self):
+        try:
+            while True:
+                self._ui_queue.get_nowait()()
+        except queue.Empty:
+            pass
+        self.root.after(50, self._pump_ui)
+
+    def _ui(self, fn):
+        self._ui_queue.put(fn)
+
     def browse_file(self):
         path = filedialog.askopenfilename(filetypes=[("HTML/XML 文件", "*.html *.htm *.xml *.xhtml"), ("所有文件", "*.*")])
         if path:
@@ -92,9 +121,18 @@ class ScannerApp:
             pass
 
     def log_msg(self, msg):
+        """线程安全：只投递，不碰 Tk。"""
+        self._ui(self._append_log, msg)
+
+    def _append_log(self, msg):
         self.log.insert("end", msg + "\n")
         self.log.see("end")
-        self.root.update()
+
+    def set_status(self, text):
+        self._ui(self.status_var.set, text)
+
+    def set_busy(self, busy):
+        self._ui(lambda: self.btn.config(state="disabled" if busy else "normal"))
 
     def start_scan(self):
         path = self.path_var.get().strip()
@@ -104,25 +142,36 @@ class ScannerApp:
         if not Path(path).is_file():
             messagebox.showerror("错误", f"文件不存在：{path}")
             return
-        self.btn.config(state="disabled")
+        self.set_busy(True)
         self.log.delete("1.0", "end")
         threading.Thread(target=self._scan, args=(path,), daemon=True).start()
 
     def _scan(self, path):
         try:
-            self.log_msg(f"[1/3] 读取文件：{path}")
+            size = os.path.getsize(path)
+            if size > MAX_INPUT_BYTES:
+                raise ValueError(
+                    f"文件过大（{size / 1048576:.1f} MB，上限 {MAX_INPUT_BYTES // 1048576} MB）："
+                    "请拆分后再扫描"
+                )
+            self.log_msg(f"[1/4] 读取文件：{path}")
             html = Path(path).read_text(encoding="utf-8")
-            self.log_msg(f"[2/3] 提取特征...")
+            self.log_msg(f"[2/4] 提取特征...")
             features = extract_features(html)
             form_count = len(features["forms"])
             self.log_msg(f"  发现 {form_count} 个表单, "
                          f"{len(features['script_blocks'])} 个脚本块, "
                          f"{len(features['inline_events'])} 个内联事件")
-            self.log_msg(f"[3/3] 调用大模型分析...")
-            self.status_var.set("分析中，请稍候...")
-            prompt = build_prompt(path, features)
+            self.log_msg(f"[3/4] 脱敏与截断...")
+            safe_features, stats = prepare_features(features)
+            self.log_msg(f"  已脱敏 {stats['redacted']} 处疑似凭据，"
+                         f"截断 {stats['truncated_chars']} 字符")
+            self.log_msg(f"[4/4] 调用大模型分析...")
+            self.set_status("分析中，请稍候...")
+            prompt = build_prompt(path, safe_features)
+            self.log_msg(f"  提示词 {len(prompt)} 字符（上限 {MAX_PROMPT_CHARS}）")
             analysis = call_llm(prompt)
-            json_path, md_path = save_report(path, features, analysis)
+            json_path, md_path = save_report(path, safe_features, analysis)
             self.log_msg(f"\n✅ 分析完成！")
             self.log_msg(f"  JSON 报告：{json_path}")
             self.log_msg(f"  Markdown 报告：{md_path}")
@@ -132,12 +181,12 @@ class ScannerApp:
                     self.log_msg(f"  [{item.get('risk_level','?')}] {item.get('vulnerability_type','?')} — {item.get('location','')}")
             else:
                 self.log_msg(f"\n{analysis}")
-            self.status_var.set(f"完成 — 报告已保存至 output/ 目录")
+            self.set_status("完成 — 报告已保存至 output/ 目录")
         except Exception as e:
             self.log_msg(f"\n❌ 错误：{e}")
-            self.status_var.set("分析失败")
+            self.set_status("分析失败")
         finally:
-            self.btn.config(state="normal")
+            self.set_busy(False)
 
 
 if __name__ == "__main__":

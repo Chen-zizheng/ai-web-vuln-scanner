@@ -1,3 +1,6 @@
-requests
-beautifulsoup4
-pytest
+# 版本号在审计时实测通过（本机 Python 3.13 + CI 的 Python 3.9）。
+# 钉死版本是为了让今天和明天装出来的东西一致；升级时改这里的数字并跑一遍 pytest，
+# 不要用 pip install -U 让依赖悄悄漂移。
+requests==2.33.1
+beautifulsoup4==4.15.0
+pytest==9.1.1
