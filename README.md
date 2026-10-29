@@ -1,40 +1,48 @@
 # AI 辅助 Web 漏洞风险扫描器
 
-基于大模型的本地 Web 安全分析工具：解析 HTML 提取表单、内联事件、危险 JS 调用等风险特征，
-调用 DeepSeek API 进行 XSS / SQL 注入风险分析，输出 JSON + Markdown 双格式报告。
+本地 Web 安全分析工具：先用**污点分析**在页面内联脚本里追数据流（来源 → 汇点，带行号），
+把能证明的 XSS 通路直接定案；再调用 DeepSeek API 补充它认不出的写法（框架模板、混淆代码）。
+输出 JSON + Markdown 双格式报告，每条结论都标明「已证实」还是「疑似」。
 
 ## 运行截图
 ![扫描器.png](扫描器.png)
 
 ## 功能
+- **污点分析**：追踪 location / cookie / localStorage / postMessage 等来源，到 innerHTML / document.write / eval 等汇点的完整通路，给出文件行号与上下文（本地完成，不联网）
+- 大模型补充分析：对静态分析无结论的页面做结构化研判（风险等级 / 触发位置 / 修复建议）
 - BeautifulSoup + 正则提取 4 类风险特征（表单 / 脚本块 / 内联事件 / 危险函数调用）
-- 大模型结构化风险分析（风险等级 / 触发位置 / 修复建议）
-- GUI 界面 + 多线程异步扫描，报告自动落盘 JSON + Markdown
+- GUI 界面 + 多线程异步扫描，报告自动落盘 JSON + Markdown，结论分「已证实 / 疑似」两级
 
 ## 工作原理
 
 ```
-目标 HTML ──► extract_features()  ──► build_prompt() ──► call_llm() ──► 报告
-              BeautifulSoup + 正则    约束输出字段的提示词    DeepSeek API    JSON + Markdown
-              脱敏凭据 + 截断到 5/10/20 条 + 20k 字符预算
+目标 HTML ──► taint.analyze()  ──► 已证实结论（行号 + 数据流）
+          │
+          ├──► extract_features() ──► build_prompt() ──► call_llm() ──► 疑似结论
+          │    BeautifulSoup + 正则   约束输出字段的提示词   DeepSeek API
+          │    脱敏凭据 + 截断到 5/10/20 条 + 20k 字符预算
+          ▼
+       报告（JSON + Markdown，按证据强度分级）
 ```
 
-三个环节都是纯函数（`call_llm` 除外），所以可以脱离 GUI 单独测试。
+每一环都是纯函数（`call_llm` 除外），所以可以脱离 GUI 单独测试；
+大模型不可用时，静态分析部分照常出结论。
 
 ## 测试
 
 ```bash
 pip install -r requirements.txt
-pytest -q          # 42 passed
+pytest -q          # 73 passed
 ```
 
-**42 个用例，分三组：**
+**73 个用例，分四组：**
 
 | 文件 | 用例数 | 覆盖对象 |
 |---|---|---|
 | `test_scanner.py` | 5 | `extract_features`：表单与输入框提取、`innerHTML` 等危险函数识别、空页面不抛异常 |
 | `test_llm_pipeline.py` | 21 | `build_prompt` + `call_llm`：提示词契约、鉴权头、超时、输出解析与降级 |
-| `test_eval.py` | 16 | 评测指标、数据集完整性、基线后端不发起网络请求 |
+| `test_taint.py` | 20 | 污点分析：变量传播、净化器、各类来源与汇点、跨 script 不传播、同一行去重 |
+| `test_eval.py` | 27 | 指标计算、bootstrap 区间、McNemar 检验、三套语料完整性、Semgrep 结果映射（打桩，不装也能测） |
 
 `test_llm_pipeline.py` 用 `monkeypatch` 替换 `requests.post`，**不发真实网络请求**，
 因此可以跑在 CI 的无网环境里，也不消耗 API 额度。它覆盖的是模型调用最容易出事的几条路径：
@@ -51,39 +59,54 @@ pytest -q          # 42 passed
 
 - `extract_features` 的正则对 `javascript:void(0)` 这类写法不敏感——它不在当前 6 个模式内
 - 没有针对真实 DeepSeek 接口的集成测试（需要额度，故意不放进 CI）
+- 污点分析只覆盖原生 DOM API，**不认识 Vue / React / Angular 的模板语法**（见下一节）
 - 没有覆盖率门槛，也没有 UI 层测试
 
 ## 评测
 
 测试回答「代码会不会崩」，评测回答「**判得准不准**」。
 
-`eval/dataset.jsonl` 是 50 条人工编写并标注的 HTML 片段（22 正 / 28 负），标注规则写在
-[`eval/README.md`](eval/README.md) 里，任何人可以按同样规则复核。其中 16 条是刻意设计的干扰项：
-**有 sink 但数据源不可控**（`innerHTML` 写常量、`eval` 求常量、`src` 指向 CDN……）。
+三套人工标注语料，标注规则写在 [`eval/README.md`](eval/README.md) 里，任何人可以按同样规则复核：
+
+- `eval/dataset.jsonl`：50 条（22 正 / 28 负），覆盖常规写法，含 16 条「有 sink 无 source」干扰项
+- `eval/corpus-hard.jsonl`：25 条（16 正 / 9 负），难例（变量传播、模板字符串、postMessage、eval 链）与安全对照
+- `eval/corpus-holdout.jsonl`：12 条（5 正 / 7 负），**代码冻结后新写的留出集**，故意用框架语法
+
+三套语料分工明确：前两套用来开发，第三套只看不调，用来估计真实泛化水平。
 
 ```bash
-python eval.py                      # 规则基线，离线，不花钱
-python eval.py --backend deepseek   # 真实调用模型（需 DEEPSEEK_API_KEY）
+python eval.py                       # 三个后端 × 三套语料，离线，约 1 秒
+python eval.py --backends deepseek   # 真实调用模型（需 DEEPSEEK_API_KEY）
+python eval.py --backends taint,semgrep   # 与 Semgrep 同基线（需先 pip install semgrep）
 ```
 
-规则基线（命中 sink 即报 XSS）在 50 条上的实测结果：
+结果写进 `eval/report.md`（逐条误报/漏报名单）与 `eval/bench.json`。
 
-| 指标 | 数值 |
-|---|---|
-| 准确率 | 70.00% |
-| 精确率 | 60.61% |
-| 召回率 | 90.91% |
-| F1 | 0.7273 |
-| 误报率 | 46.43% |
-| 混淆矩阵 | TP=20 / FP=13 / TN=15 / FN=2 |
+摘要（完整表格、置信区间与 McNemar 检验见 [BENCHMARK.md](BENCHMARK.md)）：
 
-误报几乎全部来自「有 sink 无 source」的干扰样本（`innerHTML` 写常量、`eval` 求常量、`src` 指向 CDN）。
+| 语料 | 后端 | 精确率 | 召回率 | F1 | 误报率 |
+|---|---|---|---|---|---|
+| dataset（开发集） | 关键词规则 | 61.76% | 95.45% | 0.7500 | 46.43% |
+| dataset（开发集） | **污点分析** | 100% | 100% | 1.0000 | 0% |
+| dataset（开发集） | 混合 | 62.86% | 100% | 0.7720 | 46.43% |
+| corpus-hard（开发集） | 关键词规则 | 78.95% | 93.75% | 0.8572 | 44.44% |
+| corpus-hard（开发集） | **污点分析** | 100% | 100% | 1.0000 | 0% |
+| corpus-hard（开发集） | 混合 | 80.00% | 100% | 0.8889 | 44.44% |
+| holdout（留出集） | 关键词规则 | 50.00% | 80.00% | 0.6154 | 57.14% |
+| holdout（留出集） | **污点分析** | 50.00% | 20.00% | 0.2857 | 14.29% |
+| holdout（留出集） | 混合 | 44.44% | 80.00% | 0.5714 | 71.43% |
 
-漏报最初有 5 类：`insertAdjacentHTML`、jQuery `.html()`、`srcdoc`、内联事件传参、`window.open()` 拼参。
-前 3 类已作为缺陷单记录并修复（#3 #4 #5），**F1 由 0.6539 提升到 0.7273、召回率由 77.27% 提升到 90.91%**；
-剩下 2 类（#6 #7）无法靠补正则解决——需要判断「参数从哪来」，属于数据流问题，正是保留大模型这一层的理由。
+三句话读完这张表：
 
-**这条链路走完一遍，比数字本身更重要**：评测发现漏检 → 提缺陷单 → 修复 → 重跑评测验证提升。
+1. **关键词规则的误报率是结构性的**（两套开发集都 ≥44%），命中 `innerHTML` 就报警，而现代页面几乎都有它。
+2. **污点分析在开发集上的 1.000 是上限，不是成绩**——语料和代码出自同一人之手；留出集上的 0.2857 才是诚实起点。
+3. **留出集的漏报全部是框架语法**（Vue `v-html`、React `dangerouslySetInnerHTML`、Angular `[innerHTML]`、`setAttribute('onclick')`），
+   这是下一版最该补的四类汇点，不是「再调调正则」。
+
+**还没跑的两个后端写在 [BENCHMARK.md](BENCHMARK.md) 里，不藏**：Semgrep 需要安装（沙箱无出网），
+DeepSeek 需要 key 与网络。在这两个数字出来之前，本仓库不宣称「比 Semgrep 准」或「比纯规则准多少」。
+
+这条链路本身比数字重要：评测发现漏检 → 提缺陷单 → 修复 → 重跑验证 → **再把真话写进文档**。
 
 ## 数据边界：会发出去什么
 
@@ -143,16 +166,34 @@ python main.py
 `.github/workflows/test.yml`：每次 push 到 main 与每个 PR，都会在 Python 3.12 上跑一遍 `pytest`。
 CI 失败过的历史提交保留在 Actions 记录里，最近一次为通过状态。
 
+## 这个工具自己也被审过
+
+安全工具最容易只审别人不审自己。仓库里 [`docs/security-review/`](docs/security-review/REPORT.md)
+是一次针对本项目的独立审计记录（按结构化审计流程产出，非自评）：
+
+- 2 条已确认：页面凭据会随脚本正文进入提示词发给第三方 API；超大输入可把提示词撑到 233 万 token
+- 2 条待验证：模型研判可被页面内容诱导（提示词注入）、依赖未锁定
+- 3 条已排除（含输出目录相对路径、报告 Markdown 注入、UI 线程崩溃），并写明排除理由
+
+上面「数据边界」一节的脱敏三道闸与 2 MB 输入上限，就是这次审计的直接产物。
+
 ## 目录结构
 
 ```
-scanner_core.py        # 特征提取 / 提示词构造 / 模型调用
-main.py                # tkinter GUI + 多线程调度 + 报告落盘
-eval.py                # 评测脚本：规则基线 / 大模型两种后端，输出指标与报告
-eval/dataset.jsonl     # 50 条人工标注样本
-eval/README.md         # 标注规则与指标说明
-test_scanner.py        # 特征提取的单元测试
-test_llm_pipeline.py   # 提示词与模型输出解析的单元测试
-test_eval.py           # 评测指标与数据集完整性的单元测试
+scanner_core.py         # 特征提取 / 脱敏截断 / 提示词构造 / 模型调用
+taint.py                # 污点分析：来源→汇点，带行号，可单独 CLI 运行
+main.py                 # tkinter GUI + 多线程调度 + 两级结论报告落盘
+eval.py                 # 评测：heuristic / taint / hybrid / deepseek / semgrep 五种后端
+BENCHMARK.md            # 基准测试的方法、结果、局限与下一步
+eval/dataset.jsonl      # 50 条开发语料
+eval/corpus-hard.jsonl  # 25 条难例开发语料
+eval/corpus-holdout.jsonl # 12 条留出语料（冻结代码后新写）
+eval/semgrep-xss.yaml   # 与 Semgrep 对比用的 taint 规则
+eval/README.md          # 标注规则与指标说明
+test_scanner.py         # 特征提取的单元测试
+test_llm_pipeline.py    # 提示词与模型输出解析的单元测试
+test_taint.py           # 污点分析的单元测试
+test_eval.py            # 指标、统计检验、语料完整性的单元测试
+docs/security-review/   # 对本项目的安全审计记录
 requirements.txt
 ```

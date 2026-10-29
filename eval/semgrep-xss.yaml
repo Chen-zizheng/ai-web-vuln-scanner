@@ -1,0 +1,66 @@
+# Semgrep 规则（taint 模式）：与 taint.py 对齐的对照基线。
+#
+# 为什么需要这份规则：面试里最常被问的是「不用大模型行不行」。
+# Semgrep 是工业界最常用的静态分析器之一，用它跑同一批内联脚本，
+# 才能说明我们加的到底是能力还是包装。
+#
+# 用法：
+#   pip install semgrep
+#   python eval.py --backends heuristic,taint,hybrid,semgrep
+rules:
+  - id: avs-dom-xss-taint
+    languages: [javascript, typescript]
+    message: 用户可控数据未经转义进入 HTML 汇点（XSS）
+    severity: WARNING
+    metadata:
+      category: security
+      confidence: HIGH
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: location.hash
+          - pattern: location.search
+          - pattern: location.href
+          - pattern: location.pathname
+          - pattern: document.URL
+          - pattern: document.documentURI
+          - pattern: document.referrer
+          - pattern: document.cookie
+          - pattern: window.name
+          - pattern: localStorage.getItem(...)
+          - pattern: sessionStorage.getItem(...)
+          - pattern: new URLSearchParams(...).get(...)
+          - pattern: $E.data
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: escapeHtml(...)
+          - pattern: sanitize(...)
+          - pattern: DOMPurify.sanitize(...)
+          - pattern: filterXSS(...)
+          - pattern: encodeURIComponent(...)
+          - pattern: JSON.stringify(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $EL.innerHTML = $V
+      - patterns:
+          - pattern: $EL.outerHTML = $V
+      - patterns:
+          - pattern: $EL.srcdoc = $V
+      - patterns:
+          - pattern: $EL.href = $V
+      - patterns:
+          - pattern: document.write($V)
+      - patterns:
+          - pattern: document.writeln($V)
+      - patterns:
+          - pattern: $EL.insertAdjacentHTML($POS, $V)
+      - patterns:
+          - pattern: eval($V)
+      - patterns:
+          - pattern: new Function($V)
+      - patterns:
+          - pattern: setTimeout($V, ...)
+      - patterns:
+          - pattern: setInterval($V, ...)
+      - patterns:
+          - pattern: window.open($V, ...)

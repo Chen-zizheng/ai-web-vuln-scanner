@@ -1,0 +1,509 @@
+[
+  {
+    "coverage_id": "eval.py%23load_dataset::eval.py%23argparse::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "eval.py#load_dataset",
+      "boundary": "eval.py#argparse",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "eval.py#load_dataset",
+    "boundary": "eval.py#argparse",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "ATTACK-CLASSES.md#Resource and file handling",
+    "starting_paths": [
+      "eval.py",
+      "eval/README.md"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "eval.py",
+      "eval/README.md",
+      "eval/build_dataset.py",
+      "eval/dataset.jsonl",
+      "test_eval.py",
+      "test_llm_pipeline.py",
+      "test_scanner.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "eval.py",
+          "eval/build_dataset.py",
+          "eval/dataset.jsonl",
+          "eval/README.md"
+        ],
+        "invariant": "Evaluation inputs are trusted or validated",
+        "method": "source",
+        "result": "dataset.jsonl is repo-local and read with json.loads per line; cache and results are written under eval/. No untrusted writer, no execution, no network.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "test_scanner.py",
+          "test_llm_pipeline.py",
+          "test_eval.py"
+        ],
+        "invariant": "Tests exercise real network or file authority",
+        "method": "source",
+        "result": "requests.post is monkeypatched in every LLM test; nothing is executed from the dataset.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "main.py%23_scan::main.py%23Path%28path%29.read_text::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "main.py#_scan",
+      "boundary": "main.py#Path(path).read_text",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "main.py#_scan",
+    "boundary": "main.py#Path(path).read_text",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "ATTACK-CLASSES.md#Resource and file handling",
+    "starting_paths": [
+      "main.py",
+      "scanner_core.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "main.py",
+      "scanner_core.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "main.py",
+          "scanner_core.py"
+        ],
+        "invariant": "Input size is bounded, or oversized input is refused and reported as a refusal",
+        "method": "source",
+        "result": "The only gates are is_file (main.py:104) and read_text (main.py:114); no stat, no cap, and script_blocks[:5] caps blocks rather than length.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "main.py",
+          "scanner_core.py"
+        ],
+        "invariant": "Prompt size is checked against a context budget before the request is built",
+        "method": "local",
+        "result": "8 MiB script block: extraction 0.77 s, prompt 9,321,064 chars, longest block 8,388,603 chars, no refusal.",
+        "artifact": "agents/hunter-a/artifacts/probe-results.json"
+      }
+    ],
+    "result_fingerprints": [
+      "avs-unbounded-scan-input"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "main.py%23_scan::main.py%23log_msg::profile%2Fquick%2Fall-in-scope-subsystems::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Reachable%20fatal%20error%20or%20deadlock",
+    "canonical_refs": {
+      "surface": "main.py#_scan",
+      "boundary": "main.py#log_msg",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Reachable fatal error or deadlock"
+    },
+    "surface": "main.py#_scan",
+    "boundary": "main.py#log_msg",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Reachable fatal error or deadlock",
+    "starting_paths": [
+      "main.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Reachable fatal error or deadlock"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "main.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "main.py"
+        ],
+        "invariant": "Cross-thread UI mutation crosses a security boundary",
+        "method": "source",
+        "result": "It does not: the worker mutates its own process's widgets, no principal or authority changes. Recorded as a robustness bug and rejected as avs-ui-thread-crash.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "main.py%23save_report::main.py%23Path%28output%29::profile%2Fquick%2Fall-in-scope-subsystems::AI-AND-LLM.md%23Insecure%20output%20rendering",
+    "canonical_refs": {
+      "surface": "main.py#save_report",
+      "boundary": "main.py#Path(output)",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "AI-AND-LLM.md#Insecure output rendering"
+    },
+    "surface": "main.py#save_report",
+    "boundary": "main.py#Path(output)",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "AI-AND-LLM.md#Insecure output rendering",
+    "starting_paths": [
+      "main.py",
+      "scanner_core.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [
+      "AI-AND-LLM.md#Insecure output rendering"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "main.py",
+      "scanner_core.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "main.py"
+        ],
+        "invariant": "Model output reaches only sinks whose policy it satisfies",
+        "method": "source",
+        "result": "Fields are interpolated into a local .md data file and kept as data in the .json report; the repository ships no renderer, so the candidate was rejected as avs-report-markdown-injection.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "main.py",
+          "scanner_core.py"
+        ],
+        "invariant": "Output path is anchored and not attacker-selected",
+        "method": "source",
+        "result": "Path(\"output\") is fixed and relative to the launch directory; no request field reaches it. Rejected as avs-output-dir-relative-cwd.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "main.py%23start_scan::main.py%23Path%28path%29.is_file::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "main.py#start_scan",
+      "boundary": "main.py#Path(path).is_file",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "main.py#start_scan",
+    "boundary": "main.py#Path(path).is_file",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "ATTACK-CLASSES.md#Access control",
+    "starting_paths": [
+      "main.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "main.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "main.py"
+        ],
+        "invariant": "Path selection crosses a privilege boundary",
+        "method": "source",
+        "result": "The analyst picks the path in their own session; no elevation and no remote input. Rejected as avs-output-dir-relative-cwd for the output side.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "main.py%23tkinter-mainloop::main.py%23no-network-listener::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "main.py#tkinter-mainloop",
+      "boundary": "main.py#no-network-listener",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "main.py#tkinter-mainloop",
+    "boundary": "main.py#no-network-listener",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "ATTACK-CLASSES.md#Injection",
+    "starting_paths": [
+      "main.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "not_applicable",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "No inbound network surface: the process opens no socket and serves nothing; the only inputs are the file dialog, Tk drag-and-drop and the clipboard, all driven by the local analyst."
+    ]
+  },
+  {
+    "coverage_id": "requirements.txt%23runtime-dependencies::.github%2Fworkflows%2Ftest.yml%23pip%20install%20-r%20requirements.txt::profile%2Fquick%2Fall-in-scope-subsystems::SUPPLY-CHAIN-AND-RELEASE.md%23Mutable%20and%20unbound%20build%20inputs",
+    "canonical_refs": {
+      "surface": "requirements.txt#runtime-dependencies",
+      "boundary": ".github/workflows/test.yml#pip install -r requirements.txt",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs"
+    },
+    "surface": "requirements.txt#runtime-dependencies",
+    "boundary": ".github/workflows/test.yml#pip install -r requirements.txt",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+    "starting_paths": [
+      ".github/workflows/test.yml",
+      "README.md"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+    "selected_companion_blocks": [
+      "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Release authorization and signing-policy gaps"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      ".github/workflows/test.yml",
+      "README.md",
+      "requirements.txt"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "requirements.txt",
+          ".github/workflows/test.yml",
+          "README.md"
+        ],
+        "invariant": "Build inputs are pinned to immutable identities with integrity hashes",
+        "method": "source",
+        "result": "Three bare package names, no hashes; actions pinned to v3/v4 tags; CI installs fresh on every push and the README prescribes the same on analyst machines.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "requirements.txt",
+          ".github/workflows/test.yml"
+        ],
+        "invariant": "Resolution is reproducible across two installs",
+        "method": "source",
+        "result": "Not executable in the audit environment: no outbound network, so two resolutions cannot be compared. The invariant is recorded as unchecked, which is why the unit stays a candidate.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "avs-unpinned-dependencies"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "scanner_core.py%23build_prompt::scanner_core.py%23call_llm::profile%2Fquick%2Fall-in-scope-subsystems::AI-AND-LLM.md%23Indirect%20injection%20through%20retrieved%20or%20ingested%20content",
+    "canonical_refs": {
+      "surface": "scanner_core.py#build_prompt",
+      "boundary": "scanner_core.py#call_llm",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "AI-AND-LLM.md#Indirect injection through retrieved or ingested content"
+    },
+    "surface": "scanner_core.py#build_prompt",
+    "boundary": "scanner_core.py#call_llm",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "AI-AND-LLM.md#Indirect injection through retrieved or ingested content",
+    "starting_paths": [
+      "eval.py",
+      "main.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [
+      "AI-AND-LLM.md#Core discipline",
+      "AI-AND-LLM.md#Validation rules",
+      "AI-AND-LLM.md#Prompt role and provenance confusion"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "eval.py",
+      "main.py",
+      "scanner_core.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "scanner_core.py"
+        ],
+        "invariant": "Untrusted page text is separated from instructions and cannot change the verdict alone",
+        "method": "source",
+        "result": "One f-string carries both; no delimiters, no data notice, no second channel. The instruction turn is the only turn.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "scanner_core.py",
+          "main.py",
+          "eval.py"
+        ],
+        "invariant": "The verdict is cross-checked by a deterministic control before it becomes the report",
+        "method": "local",
+        "result": "Injected directive landed at offset 445 of an 878-char prompt inside the instruction turn; main.py:125 writes the reply as the result and eval.py::backend_heuristic is never called at scan time.",
+        "artifact": "agents/hunter-a/artifacts/probe-results.json"
+      }
+    ],
+    "result_fingerprints": [
+      "avs-model-verdict-steering"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "scanner_core.py%23call_llm::scanner_core.py%23API_KEY::profile%2Fquick%2Fall-in-scope-subsystems::AI-AND-LLM.md%23Sensitive%20context%20extraction",
+    "canonical_refs": {
+      "surface": "scanner_core.py#call_llm",
+      "boundary": "scanner_core.py#API_KEY",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "AI-AND-LLM.md#Sensitive context extraction"
+    },
+    "surface": "scanner_core.py#call_llm",
+    "boundary": "scanner_core.py#API_KEY",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "AI-AND-LLM.md#Sensitive context extraction",
+    "starting_paths": [
+      "README.md",
+      "main.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "selected_companion_blocks": [
+      "AI-AND-LLM.md#Output and disclosure attack classes"
+    ],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter-a",
+    "reviewed_paths": [
+      "README.md",
+      "main.py",
+      "scanner_core.py"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "scanner_core.py",
+          "README.md"
+        ],
+        "invariant": "Only the data the analysis needs leaves the host, or the payload is disclosed and approved",
+        "method": "source",
+        "result": "build_prompt ships json.dumps(features) verbatim; README never says script bodies leave the machine and offers no dry-run.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter-a",
+        "reviewed_paths": [
+          "scanner_core.py",
+          "main.py"
+        ],
+        "invariant": "Outgoing request body is inspectable and redacted",
+        "method": "local",
+        "result": "Captured 920-byte body contained both planted credentials and the local path; no redaction step exists between extract_features and requests.post.",
+        "artifact": "agents/hunter-a/artifacts/egress-request-body.json"
+      }
+    ],
+    "result_fingerprints": [
+      "avs-credential-egress-to-third-party"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "scanner_core.py%23python-runtime::scanner_core.py%23no-native-extension::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Obvious%20things",
+    "canonical_refs": {
+      "surface": "scanner_core.py#python-runtime",
+      "boundary": "scanner_core.py#no-native-extension",
+      "subsystem": "profile/quick/all-in-scope-subsystems",
+      "attack_class": "ATTACK-CLASSES.md#Obvious things"
+    },
+    "surface": "scanner_core.py#python-runtime",
+    "boundary": "scanner_core.py#no-native-extension",
+    "subsystem": "profile/quick/all-in-scope-subsystems",
+    "attack_class": "ATTACK-CLASSES.md#Obvious things",
+    "starting_paths": [
+      "main.py"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "not_applicable",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "No memory-safety surface: every in-scope module is pure Python 3 and requirements.txt lists no native extension, ctypes or cffi use."
+    ]
+  }
+]

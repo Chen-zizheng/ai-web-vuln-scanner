@@ -4,4 +4,5 @@ pytest-cache-files-*/
 output/
 eval/cache/
 eval/results.json
+eval/bench.json
 eval/report.md

@@ -8,6 +8,7 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from scanner_core import (extract_features, build_prompt, call_llm,
                           prepare_features, MAX_PROMPT_CHARS)
+import taint
 
 MAX_INPUT_BYTES = 2 * 1024 * 1024   # 单个待扫描页面的上限：2 MB，超了直接拒绝
 
@@ -35,6 +36,8 @@ def save_report(source: str, features: dict, analysis: dict) -> Path:
         md_lines.append(f"\n共发现 **{len(analysis)}** 个风险点：\n")
         for i, item in enumerate(analysis, 1):
             md_lines.append(f"## {i}. {_md_field(item.get('vulnerability_type', '未知'), 80)} [{_md_field(item.get('risk_level', '?'), 20)}]\n")
+            md_lines.append(f"- **结论**: {_md_field(item.get('confidence', 'suspected'))}"
+                            f"（{_md_field(item.get('detector', 'llm'), 20)}）\n")
             md_lines.append(f"- **位置**: {_md_field(item.get('location', 'N/A'))}\n")
             md_lines.append(f"- **原因**: {_md_field(item.get('reason', 'N/A'))}\n")
             md_lines.append(f"- **修复**: {_md_field(item.get('fix_suggestion', 'N/A'))}\n")
@@ -154,25 +157,47 @@ class ScannerApp:
                     f"文件过大（{size / 1048576:.1f} MB，上限 {MAX_INPUT_BYTES // 1048576} MB）："
                     "请拆分后再扫描"
                 )
-            self.log_msg(f"[1/4] 读取文件：{path}")
+            self.log_msg(f"[1/5] 读取文件：{path}")
             html = Path(path).read_text(encoding="utf-8")
-            self.log_msg(f"[2/4] 提取特征...")
+            self.log_msg("[2/5] 提取特征...")
             features = extract_features(html)
             form_count = len(features["forms"])
             self.log_msg(f"  发现 {form_count} 个表单, "
                          f"{len(features['script_blocks'])} 个脚本块, "
                          f"{len(features['inline_events'])} 个内联事件")
-            self.log_msg(f"[3/4] 脱敏与截断...")
+
+            # 静态污点分析：本地完成、不联网、每条结论都带行号，先跑它
+            self.log_msg("[3/5] 静态污点分析（本地，不联网）...")
+            static = taint.analyze(html)["findings"]
+            for item in static:
+                item["detector"] = "taint"
+            self.log_msg(f"  发现 {len(static)} 条已证实的数据流通路")
+            for item in static:
+                self.log_msg(f"    [已证实] {item['risk_level']} {item['location']}")
+
+            self.log_msg("[4/5] 脱敏与截断...")
             safe_features, stats = prepare_features(features)
             self.log_msg(f"  已脱敏 {stats['redacted']} 处疑似凭据，"
                          f"截断 {stats['truncated_chars']} 字符")
-            self.log_msg(f"[4/4] 调用大模型分析...")
+            self.log_msg("[5/5] 调用大模型补充分析...")
             self.set_status("分析中，请稍候...")
-            prompt = build_prompt(path, safe_features)
-            self.log_msg(f"  提示词 {len(prompt)} 字符（上限 {MAX_PROMPT_CHARS}）")
-            analysis = call_llm(prompt)
+            llm_findings = []
+            try:
+                prompt = build_prompt(path, safe_features)
+                self.log_msg(f"  提示词 {len(prompt)} 字符（上限 {MAX_PROMPT_CHARS}）")
+                raw = call_llm(prompt)
+                llm_findings = raw if isinstance(raw, list) else ([raw] if isinstance(raw, dict) else [])
+            except Exception as exc:
+                # 大模型挂了不等于扫描失败：已证实的部分仍然有效
+                self.log_msg(f"  ⚠️ 大模型不可用（{type(exc).__name__}），只输出静态结论")
+            for item in llm_findings:
+                if isinstance(item, dict):
+                    item.setdefault("detector", "llm")
+                    item.setdefault("confidence", "suspected")
+
+            analysis = static + llm_findings
             json_path, md_path = save_report(path, safe_features, analysis)
-            self.log_msg(f"\n✅ 分析完成！")
+            self.log_msg(f"\n✅ 分析完成！已证实 {len(static)} 条，疑似 {len(llm_findings)} 条")
             self.log_msg(f"  JSON 报告：{json_path}")
             self.log_msg(f"  Markdown 报告：{md_path}")
             if isinstance(analysis, list):

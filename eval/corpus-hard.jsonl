@@ -1,0 +1,25 @@
+{"id":"safe-101","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = \"<b>固定文案</b>\";</script>","note":"sink 存在但值是字面量","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"safe-102","html":"<script>var s = location.hash; document.body.textContent = s;</script>","note":"来源污染但走 textContent 安全上下文","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-001","html":"<div id=\"o\"></div><script>var s = location.hash; document.getElementById(\"o\").innerHTML = s;</script>","note":"来源经变量进入 innerHTML","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-002","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = location.hash + \"<br>\";</script>","note":"字符串拼接保留污染","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-003","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = \"<p>\" + document.cookie + \"</p>\";</script>","note":"cookie 进入 HTML 上下文","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"safe-103","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = DOMPurify.sanitize(location.hash);</script>","note":"过 DOMPurify 净化","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"safe-104","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = escapeHtml(location.hash);</script>","note":"过项目自带转义函数","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-004","html":"<script>var h = location.hash; setTimeout(\"alert(1)\" + h, 0);</script>","note":"setTimeout 字符串参数按代码执行","label":{"has_xss_risk":true,"risk_level":"MEDIUM"}}
+{"id":"hard-005","html":"<script>eval(atob(location.hash.slice(1)));</script>","note":"eval + base64 解码仍是代码执行","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-006","html":"<script>document.write(\"<h1>\" + location.search + \"</h1>\");</script>","note":"document.write 拼接查询串","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-007","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = localStorage.getItem(\"bio\");</script>","note":"存储型 XSS（持久化来源）","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-008","html":"<div id=\"o\"></div><script>window.onmessage = function (e) { document.getElementById(\"o\").innerHTML = e.data; };</script>","note":"postMessage 数据进入 HTML（无 origin 校验）","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-009","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").insertAdjacentHTML(\"beforeend\", location.hash);</script>","note":"insertAdjacentHTML 写入","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-010","html":"<script>document.querySelector(\"iframe\").srcdoc = location.hash;</script>","note":"srcdoc 覆盖 iframe 文档","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"hard-011","html":"<div id=\"o\"></div><script>var a = location.hash; var b = a; document.getElementById(\"o\").innerHTML = b;</script>","note":"两步赋值传播","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"safe-105","html":"<div id=\"o\"></div><script>var a = \"static\"; document.getElementById(\"o\").innerHTML = a;</script>","note":"变量里是常量","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-012","html":"<form><input id=\"q\"></form><div id=\"o\"></div><script>$(\"#o\").html($(\"#q\").val());</script>","note":"jQuery .html() 写入输入值","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"safe-106","html":"<form><input id=\"q\"></form><div id=\"o\"></div><script>$(\"#o\").text($(\"#q\").val());</script>","note":"jQuery .text() 按文本写入","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-013","html":"<a id=\"l\" href=\"#\">x</a><script>document.getElementById(\"l\").href = location.hash;</script>","note":"URL 上下文可执行 javascript:","label":{"has_xss_risk":true,"risk_level":"MEDIUM"}}
+{"id":"safe-107","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").setAttribute(\"title\", location.hash);</script>","note":"title 属性不进入可执行上下文","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-014","html":"<button onclick=\"document.body.innerHTML = location.hash\">x</button>","note":"内联事件处理器写入 HTML","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"safe-108","html":"<script src=\"https://cdn.example.com/app.js\"></script>","note":"外链脚本本工具不分析","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-015","html":"<div id=\"o\"></div><script>document.getElementById(\"o\").innerHTML = `<li>${location.hash}</li>`;</script>","note":"模板字符串插值保留污染","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
+{"id":"safe-109","html":"<script>var u = new URLSearchParams(location.search).get(\"u\"); document.body.textContent = u;</script>","note":"查询参数走文本上下文","label":{"has_xss_risk":false,"risk_level":"LOW"}}
+{"id":"hard-016","html":"<div id=\"o\"></div><script>var u = new URLSearchParams(location.search).get(\"u\"); document.getElementById(\"o\").innerHTML = u;</script>","note":"查询参数进入 HTML 上下文","label":{"has_xss_risk":true,"risk_level":"HIGH"}}
