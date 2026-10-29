@@ -1,5 +1,8 @@
 # AI 辅助 Web 漏洞风险扫描器
 
+[![Test Scanner Core](https://github.com/Chen-zizheng/ai-web-vuln-scanner/actions/workflows/test.yml/badge.svg)](https://github.com/Chen-zizheng/ai-web-vuln-scanner/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 本地 Web 安全分析工具：先用**污点分析**在页面内联脚本里追数据流（来源 → 汇点，带行号），
 把能证明的 XSS 通路直接定案；再调用 DeepSeek API 补充它认不出的写法（框架模板、混淆代码）。
 输出 JSON + Markdown 双格式报告，每条结论都标明「已证实」还是「疑似」。
