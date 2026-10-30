@@ -221,3 +221,18 @@ def test_call_llm_dry_run_never_posts(monkeypatch):
             assert "hello dry run" in f.read()
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
+
+
+def test_call_llm_prefers_explicit_key_over_env(monkeypatch):
+    """界面里粘贴的 key 优先于环境变量，且只影响这一次调用。"""
+    monkeypatch.setattr(scanner_core, "API_KEY", "env-key")
+    captured = _install_fake_post(monkeypatch, "[]")
+    scanner_core.call_llm("hi", api_key="page-key")
+    assert captured["headers"]["Authorization"] == "Bearer page-key"
+
+
+def test_call_llm_falls_back_to_env_key(monkeypatch):
+    monkeypatch.setattr(scanner_core, "API_KEY", "env-key")
+    captured = _install_fake_post(monkeypatch, "[]")
+    scanner_core.call_llm("hi")
+    assert captured["headers"]["Authorization"] == "Bearer env-key"

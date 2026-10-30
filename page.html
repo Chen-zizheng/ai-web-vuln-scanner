@@ -65,7 +65,11 @@
   </div>
   <div class="row">
     <button class="ghost" id="scan-src">扫描粘贴的源码</button>
-    <label class="chk"><input type="checkbox" id="llm"> 同时用大模型研判（需 DEEPSEEK_API_KEY，会联网并计费）</label>
+    <label class="chk"><input type="checkbox" id="llm"> 同时用大模型研判（会联网并按 token 计费）</label>
+  </div>
+  <div class="row">
+    <input type="password" id="key" autocomplete="off" spellcheck="false"
+           placeholder="DeepSeek API Key（可选）：粘贴后即可勾选大模型研判；只存在本页内存里，不写硬盘、不进报告">
   </div>
 
   <div id="out"></div>
@@ -78,12 +82,25 @@ const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"
   return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c];
 });
 
-if (!LLM_AVAILABLE) { $("llm").disabled = true; $("llm").checked = false; $("llm").parentElement.title = "未检测到 DEEPSEEK_API_KEY"; }
+// 环境变量里有 key 就直接可用；没有则等用户在输入框里粘贴
+function syncLlm() {
+  const pasted = $("key").value.trim().length > 0;
+  const usable = LLM_AVAILABLE || pasted;
+  $("llm").disabled = !usable;
+  if (!usable) $("llm").checked = false;
+  $("llm").parentElement.title = usable
+    ? (LLM_AVAILABLE ? "环境变量里已配置 Key" : "将使用你粘贴的 Key，仅本次运行有效")
+    : "先在上面填入 API Key";
+}
+$("key").addEventListener("input", syncLlm);
+syncLlm();
 
 async function scan(payload) {
   const out = $("out");
   out.innerHTML = '<div class="card">扫描中…</div>';
-  payload.use_llm = $("llm").checked && LLM_AVAILABLE;
+  payload.use_llm = $("llm").checked && !$("llm").disabled;
+  const pasted = $("key").value.trim();
+  if (payload.use_llm && pasted) payload.api_key = pasted;
   try {
     const r = await fetch("/api/scan", {
       method: "POST",

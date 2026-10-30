@@ -118,7 +118,7 @@ def fetch_page(url: str) -> tuple[str, str]:
     raise FetchError("跳转次数超过 %d 次" % MAX_REDIRECTS)
 
 
-def scan_html(html: str, source: str, use_llm: bool = False) -> dict:
+def scan_html(html: str, source: str, use_llm: bool = False, api_key: str = "") -> dict:
     """跑一遍静态分析，可选追加模型研判。返回给前端的结果结构。"""
     result = taint.analyze(html)
     payload = {
@@ -134,7 +134,7 @@ def scan_html(html: str, source: str, use_llm: bool = False) -> dict:
         try:
             # build_prompt 内部已经做了脱敏与截断，这里不要再手动拼一遍
             prompt = scanner_core.build_prompt(source, scanner_core.extract_features(html))
-            answer = scanner_core.call_llm(prompt)
+            answer = scanner_core.call_llm(prompt, api_key=api_key)
             if isinstance(answer, dict) and answer.get("dry_run"):
                 payload["llm_note"] = "dry-run：payload 已落盘，未联网"
             elif isinstance(answer, list):
@@ -214,20 +214,24 @@ class Handler(BaseHTTPRequestHandler):
 
         mode = payload.get("mode")
         use_llm = bool(payload.get("use_llm"))
+        api_key = payload.get("api_key") or ""
+        if not isinstance(api_key, str) or len(api_key) > 200:
+            return self._json(400, {"error": "API Key 格式不正确"})
+        api_key = api_key.strip()
         try:
             if mode == "url":
                 url = str(payload.get("url") or "").strip()
                 if not url:
                     return self._json(400, {"error": "网址为空"})
                 html, note = fetch_page(url)
-                result = scan_html(html, url, use_llm)
+                result = scan_html(html, url, use_llm, api_key)
                 result["fetch_note"] = note
                 return self._json(200, result)
             if mode == "html":
                 html = str(payload.get("html") or "")
                 if len(html.encode("utf-8")) > MAX_UPLOAD_BYTES:
                     return self._json(413, {"error": "页面超过 2 MB，请先精简或只贴可疑片段"})
-                return self._json(200, scan_html(html, str(payload.get("name") or "拖入的页面"), use_llm))
+                return self._json(200, scan_html(html, str(payload.get("name") or "拖入的页面"), use_llm, api_key))
             return self._json(400, {"error": "未知的 mode"})
         except FetchError as exc:
             return self._json(400, {"error": str(exc)})

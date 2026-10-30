@@ -159,9 +159,11 @@ def dump_payload(prompt: str) -> Path:
     return path
 
 
-def call_llm(prompt: str) -> dict:
-    if not API_KEY:
-        raise Exception("请先设置 DEEPSEEK_API_KEY 环境变量")
+def call_llm(prompt: str, api_key: str = "") -> dict:
+    # 界面里填的 key 只走这一次调用，不落盘、不打日志、不回显
+    key = (api_key or API_KEY or "").strip()
+    if not key:
+        raise Exception("缺少 API Key：在界面里填入，或设置 DEEPSEEK_API_KEY 环境变量")
     if len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError(
             "提示词过长（{} 字符，上限 {}），已拒绝发送".format(len(prompt), MAX_PROMPT_CHARS)
@@ -171,7 +173,7 @@ def call_llm(prompt: str) -> dict:
         return {"dry_run": True, "payload_path": str(path), "payload_chars": len(prompt)}
     resp = requests.post(
         API_URL,
-        headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
         timeout=60,
     )

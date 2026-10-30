@@ -159,10 +159,51 @@ def test_fetch_rejects_non_html(monkeypatch):
 
 
 def test_scan_html_llm_failure_does_not_break_static(monkeypatch):
-    def boom(prompt):
+    def boom(prompt, api_key=""):
         raise RuntimeError("no network")
 
     monkeypatch.setattr(webui.scanner_core, "call_llm", boom)
     out = webui.scan_html("<script>eval(location.hash)</script>", "unit", use_llm=True)
     assert out["findings"]
     assert "no network" in out["llm_note"]
+
+
+def test_page_has_api_key_field(server):
+    body = _get(server[1], "/?t=test-token")[1]
+    assert 'id="key"' in body
+    assert "api_key" in body
+
+
+def test_scan_forwards_pasted_key_but_never_echoes_it(server, monkeypatch):
+    _, port = server
+    seen = {}
+
+    def fake_call_llm(prompt, api_key=""):
+        seen["api_key"] = api_key
+        return [{"risk_level": "LOW", "location": "x", "snippet": "", "reason": "r"}]
+
+    monkeypatch.setattr(webui.scanner_core, "call_llm", fake_call_llm)
+    status, data = _post(port, {"mode": "html", "html": "<b>x</b>",
+                                "use_llm": True, "api_key": "sk-pasted-secret"})
+    assert status == 200
+    assert seen["api_key"] == "sk-pasted-secret"
+    assert data["suspected"], data
+    assert "sk-pasted-secret" not in json.dumps(data, ensure_ascii=False)
+
+
+def test_scan_without_key_falls_back_to_static_only(server, monkeypatch):
+    def boom(prompt, api_key=""):
+        raise Exception("缺少 API Key")
+
+    monkeypatch.setattr(webui.scanner_core, "call_llm", boom)
+    status, data = _post(server[1], {"mode": "html", "html": "<script>eval(location.hash)</script>",
+                                     "use_llm": True})
+    assert status == 200
+    assert data["findings"]
+    assert data["llm_note"].startswith("模型研判失败")
+
+
+def test_scan_rejects_oversized_api_key(server):
+    status, _ = _post(server[1], {"mode": "html", "html": "<b>x</b>",
+                                  "use_llm": True, "api_key": "sk-" + "a" * 300})
+    assert status == 400

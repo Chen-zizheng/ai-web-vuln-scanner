@@ -18,6 +18,8 @@
 
 界面支持三种输入：把 HTML 文件拖进方框、粘贴网址、粘贴源码。勾选「同时用大模型研判」才会联网计费，不勾选时全程本地。
 
+想用大模型不用配环境变量：在界面里把 DeepSeek API Key 粘进那个密码框，勾选框就会亮。这个 key 只经过一次本机回环请求、只用于本次扫描、不写硬盘也不进报告，页面刷新即消失；不想在界面里留它就还是用 `DEEPSEEK_API_KEY`。
+
 下面这些约束写在代码里，不靠自觉：
 
 - 服务只监听 `127.0.0.1`，每次启动生成一次性 token，地址里的 `?t=...` 就是它，别把这个地址发给别人
@@ -39,7 +41,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 - 污点分析：location / cookie / localStorage / postMessage 到 innerHTML / document.write / eval 等汇点，本地完成，不联网
 - 认框架模板：Vue `v-html`、Angular `[innerHTML]`、React `dangerouslySetInnerHTML`、Svelte `{@html}`、Handlebars `{{{ }}}`、lit-html `unsafeHTML`、`setAttribute('onclick', ...)`
 - 认常见的框架注入源：`$route.query`、`this.props`、`props.x`、`window.__INITIAL_STATE__` / `__NUXT__`、`document.location`
-- 大模型补充研判：输出风险等级、触发位置、修复建议
+- 大模型补充研判：输出风险等级、触发位置、修复建议；API Key 可在界面里直接粘贴，也可以走环境变量
 - 两种界面：tkinter 桌面窗口（扫描跑在子线程，报告自动落盘 JSON + Markdown），浏览器界面（拖文件或贴网址，打包成 exe 免装 Python）
 
 ## 工作原理
@@ -176,6 +178,10 @@ $env:SCANNER_DRY_RUN='1'; python main.py
 ```
 
 此时 `call_llm` 跳过网络请求，把最终 payload 写到 `output/payload_*.json`。
+
+API Key 本身也是数据边界的一部分：界面里粘贴的 key 只随这一次请求体从浏览器发到 `127.0.0.1` 上的本地服务，
+服务端取出来直接交给 `call_llm()`，不落盘、不打日志、不出现在报告和返回的 JSON 里；页面不写 `localStorage`，
+刷新即丢。要留住它就自己配 `DEEPSEEK_API_KEY`。
 
 提示词里声明了「标记之间是数据、不是指令」，但这只降低概率，不构成保证——模型是否服从取决于服务商，本地代码管不了。
 真正的防线是不要把不该给第三方看的内容交给它。
