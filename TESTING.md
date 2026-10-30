@@ -71,7 +71,7 @@ main.py           165 语句  116 未覆盖    29.7%
 
 | ID | 严重级 | 现象 | 根因 | 修复 | 回归用例 |
 |---|---|---|---|---|---|
-| D-1 | 中 | 页面里写死的密码跟着脚本正文进了第三方提示词 | `prepare_features` 只截断不脱敏 | `redact_secrets()` + 三道闸 | `test_llm_pipeline.py` 脱敏两组、`prepare_features` 不改入参 |
+| D-1 | 中 | 页面里写死的密码跟着脚本正文进了第三方提示词 | `prepare_features` 只截断不脱敏 | `redact_secrets()` + 三道闸 | `tests/test_llm_pipeline.py` 脱敏两组、`prepare_features` 不改入参 |
 | D-2 | 低 | 8 MB 页面能撑出 233 万 token 的提示词 | 输入与提示词都没有上限 | `MAX_INPUT_BYTES=2MB`、`MAX_PROMPT_CHARS=20000` | 超大 HTML 返回 413、超预算抛 `ValueError` |
 | D-3 | 高 | 打包后的 exe 双击立即退出，什么都不显示 | `--noconsole` 下 `sys.stdout` 是 `None`，`print` 抛异常 | 改为写同目录 `界面地址.txt` | 第 6 节冒烟脚本：真启动、取地址、出页面、POST 扫描 |
 | D-4 | 中 | 目标站点返回 403 或纯前端空壳时，工具给出「0 条」的假结论 | 只判 `status_code >= 400`，未处理空正文 | `_status_hint()` 按状态码给处置建议；空正文直接拒绝 | `test_fetch_403_suggests_saving_page`、`test_fetch_empty_body_rejected` |
@@ -103,7 +103,7 @@ pytest -q --cov=scanner_core --cov=taint --cov=webui --cov=main --cov=webapp --c
 
 CI 在 Python 3.12 上跑同一套用例，每次 push 到 main 与每个 PR 都会执行。
 
-CI 的 runner 不带 `_tkinter`，`test_desktop.py` 会在那里整体跳过（121 passed + 11 skipped），
+CI 的 runner 不带 `_tkinter`，`tests/test_desktop.py` 会在那里整体跳过（121 passed + 11 skipped），
 覆盖率也只统计四个不依赖 Tk 的模块。桌面层那 11 例的结论只在本地成立——这是它的局限，不是隐瞒。
 
 ## 8. 没测的东西，以及为什么

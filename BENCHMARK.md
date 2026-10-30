@@ -156,7 +156,7 @@ v2 把「汇点」这一类补完了，卡住召回的不再是汇点，而是"�
     python eval.py                                # 三个后端 × 五套语料，约 1 秒
     python eval.py --backends taint               # 只跑一个
     python eval.py --dataset eval/corpus-holdout2.jsonl
-    python -m pytest test_scanner.py test_llm_pipeline.py test_taint.py test_eval.py -q
+    python -m pytest tests/test_scanner.py tests/test_llm_pipeline.py tests/test_taint.py tests/test_eval.py -q
 
 报告写到 eval/report.md，逐样本明细在 eval/bench.json（两者都不入库，跑一次就有）。
 

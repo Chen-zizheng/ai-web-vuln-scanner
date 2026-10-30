@@ -8,7 +8,7 @@ import pytest
 import eval as ev
 import taint
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 仓库根，语料在 eval/ 下
 DATASET = os.path.join(HERE, "eval", "dataset.jsonl")
 HARD = os.path.join(HERE, "eval", "corpus-hard.jsonl")
 HOLDOUT = os.path.join(HERE, "eval", "corpus-holdout.jsonl")
