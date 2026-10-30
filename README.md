@@ -78,16 +78,19 @@ python main.py
 ## 测试
 
 ```bash
-pytest -q          # 109 passed
+pytest -q          # 132 passed
 ```
 
 | 文件 | 用例 | 覆盖 |
 |---|---|---|
 | `test_scanner.py` | 5 | 特征提取：表单与输入框、危险函数识别、空页面 |
-| `test_llm_pipeline.py` | 21 | 提示词契约、鉴权头、超时、输出解析与降级 |
+| `test_llm_pipeline.py` | 23 | 提示词契约、鉴权头、超时、输出解析与降级、脱敏与输入上限 |
 | `test_taint.py` | 44 | 污点传播、净化器、DOM 汇点与模板汇点、框架注入源、跨 script 不传播、同行去重 |
 | `test_eval.py` | 27 | 指标、bootstrap 区间、McNemar、语料完整性、Semgrep 结果映射 |
-| `test_webui.py` | 12 | 页面 token 鉴权、跨站拒绝、内网与错误协议拒绝、跳转次数、2 MB 截断、模型失败不影响静态结论 |
+| `test_webui.py` | 22 | 页面 token 鉴权、跨站拒绝、内网与错误协议拒绝、跳转次数、2 MB 截断、API Key 传递、模型失败不影响静态结论 |
+| `test_desktop.py` | 11 | 报告字段清洗与落盘、启动参数解析 |
+
+行覆盖率 71.2%：`scanner_core.py` 100%、`webapp.py` 93.8%、`taint.py` 81.6%、`webui.py` 69.0%、`main.py` 29.7%（tkinter 界面不做行覆盖，靠发布冒烟兜底）。不设覆盖率门槛，理由与逐层设计见 [TESTING.md](TESTING.md)。
 
 `test_llm_pipeline.py` 用 `monkeypatch` 顶掉 `requests.post`，不发真实请求，所以能在无网 CI 里跑，也不花额度。
 覆盖的是模型调用最容易出事的几条路径：提示词是否带上来源与特征、是否声明全部输出字段、
@@ -100,7 +103,7 @@ pytest -q          # 109 passed
 - 没有针对真实 DeepSeek 接口的集成测试（需要额度，故意不进 CI）
 - 框架注入源只认一部分：`$route.query`、`this.props`、裸 `props.x`、`window.__INITIAL_STATE__` / `__NUXT__` / `__PRELOADED_STATE__` 等能识别；JSX 属性里的对象字面量、Svelte 的 `$page` store、Angular 的 `route.snapshot`、`window.__NEXT_DATA__` 仍漏，解构出来的 `props` 也不认
 - 不追踪对象属性访问与数组下标；例外是对象字面量里 `key: 污染值` 会传播，用来连上 Vue 的 `data`
-- 没有覆盖率门槛；浏览器界面的鉴权与抓取护栏有测试，tkinter 界面仍没有
+- 覆盖率只统计到 71.2%，没有门槛；tkinter 界面不做行覆盖，靠打包冒烟脚本兜底
 - 抓网址的域名校验在解析时做，实际连接时系统会再解析一次，这中间存在 DNS rebinding 窗口，防的是「手滑填了内网地址」，不是恶意域名
 - 抓网址会从你的机器向目标站点发一次 GET，目标站点能看到你的出口 IP
 
@@ -226,8 +229,10 @@ test_llm_pipeline.py
 test_taint.py
 test_eval.py
 test_webui.py
+test_desktop.py
 docs/security-review/      # 本项目的安全审计记录
 docs/design-decisions.md   # 设计决策与取舍：每个选择的原因和代价
+TESTING.md                 # 测试设计：分层、覆盖率、用例方法、缺陷记录、冒烟脚本
 pytest.ini                 # 测试收集范围
 requirements.txt
 ```
