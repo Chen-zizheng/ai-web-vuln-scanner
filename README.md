@@ -108,9 +108,11 @@ $env:SCANNER_DRY_RUN='1'; python webapp.py
 
 ## 安装
 
-**Windows 免安装版**：到 [Releases](https://github.com/Chen-zizheng/xss-taint-scanner/releases) 下 `XSS-scanner-windows-x64.zip`，解压，双击 `XSS扫描器.exe`。浏览器自动打开界面，没打开就看解压目录里的 `界面地址.txt`。
+**Windows 免安装版**：到 [Releases](https://github.com/Chen-zizheng/xss-taint-scanner/releases) 下 `XSS-scanner-windows-x64.zip`，解压后根目录就是 `XSS扫描器.exe` 和 `_internal\`，双击 exe 即可。浏览器自动打开界面，没打开就看解压目录里的 `界面地址.txt`。
 
 界面收三种输入：拖 HTML 文件、粘网址、粘源码。
+
+**从源码跑**：要 Python 3.10 或更新版本（CI 在 3.12 上跑）。
 
 **从源码打包**：`pip install pyinstaller`，然后 `powershell -ExecutionPolicy Bypass -File build.ps1`。产物是 `dist\XSS扫描器\` 整个目录，拷给别人就能用。
 
@@ -119,7 +121,7 @@ $env:SCANNER_DRY_RUN='1'; python webapp.py
 本地服务守这些规矩，都写在代码里：
 
 - 只监听 `127.0.0.1`，每次启动生成一次性 token，就是地址里 `?t=` 后面那串
-- 缺 token、token 不对、Origin 与 Host 对不上，一律 403
+- 缺 token、token 不对一律 403；带了 Origin 又和 Host 对不上的，也 403。没带 Origin 的放行，拦的是别的网站发起的跨站请求，不是本机所有进程
 - 抓网址只走 http/https，端口限 80/443/8080/8443，解析出的 IP 必须是公网地址，最多跟 3 次跳转且每次重查，正文超 2 MB 截断，超时 10 秒
 
 ## 测试

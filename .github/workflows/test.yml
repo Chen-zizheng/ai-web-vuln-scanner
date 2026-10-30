@@ -29,7 +29,7 @@ jobs:
         pip install -r requirements.txt
 
     # 覆盖率随构建一起跑，数字在日志里，方便核对 README 与 TESTING.md。
-    # 不含 --cov=main：这个 runner 的 Python 没有 _tkinter，tests/test_desktop.py 会整体跳过。
+    # 四个源文件就是全部生产代码，没有需要跳过的模块。
     - name: Test with pytest
       run: |
         pytest --cov=scanner_core --cov=taint --cov=webui --cov=webapp --cov-report=term-missing
