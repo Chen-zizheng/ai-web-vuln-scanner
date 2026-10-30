@@ -13,7 +13,7 @@
 | 数据集回归 | 五套语料 × 五个后端 | 检测能力有没有退化，漏报多了哪几条 | 15 行指标表 |
 | 发布冒烟 | 打包后的 exe | 别人下载下来双击能不能用 | 手动脚本，见第 6 节 |
 
-前四层在 `pytest` 里（`136 passed`），第五层不在自动化里——打包产物必须有人真的双击一次，
+前四层在 `pytest` 里（`137 passed`），第五层不在自动化里——打包产物必须有人真的双击一次，
 这一层抓到过一个单元测试永远抓不到的 bug（见第 5 节 D-3）。
 
 ## 2. 覆盖率（实测，不美化）
@@ -98,7 +98,7 @@ Get-Content "dist\XSS扫描器\界面地址.txt"          # 应当出现 http://
 ## 7. 怎么跑
 
 ```bash
-pytest -q                                        # 136 passed，约 8 秒
+pytest -q                                        # 137 passed，约 8 秒
 pip install pytest-cov coverage
 pytest -q --cov=scanner_core --cov=taint --cov=webui --cov=main --cov=webapp --cov-report=term-missing
 ```
