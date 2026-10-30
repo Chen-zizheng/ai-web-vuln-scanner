@@ -3,7 +3,7 @@
 [![Test Scanner Core](https://github.com/Chen-zizheng/ai-web-vuln-scanner/actions/workflows/test.yml/badge.svg)](https://github.com/Chen-zizheng/ai-web-vuln-scanner/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-输入一个 HTML 文件，输出 XSS 风险报告（JSON + Markdown），每条结论标为「已证实」或「疑似」。
+输入 HTML 文件或网址，输出 XSS 风险报告，每条结论标为「已证实」或「疑似」。命令行、桌面窗口、浏览器界面三种用法，也可以直接下载免安装的 Windows 版本。
 
 - 「已证实」来自 `taint.py` 的污点分析：在页面内联脚本和模板属性里追来源到汇点的数据流，给出文件行号。
 - 「疑似」来自 DeepSeek：静态分析没结论时，把页面特征整理成提示词让模型研判，用于覆盖框架模板、混淆代码这类写法。
@@ -12,13 +12,35 @@
 
 ![扫描器.png](扫描器.png)
 
+## 双击就能用（Windows，免安装 Python）
+
+从 [Releases](https://github.com/Chen-zizheng/ai-web-vuln-scanner/releases) 下载 `XSS-scanner-windows-x64.zip`，解压后双击 `XSS扫描器.exe`，浏览器会自动打开界面（没打开就看解压目录里的 `界面地址.txt`，把地址粘进浏览器）。
+
+界面支持三种输入：把 HTML 文件拖进方框、粘贴网址、粘贴源码。勾选「同时用大模型研判」才会联网计费，不勾选时全程本地。
+
+下面这些约束写在代码里，不靠自觉：
+
+- 服务只监听 `127.0.0.1`，每次启动生成一次性 token，地址里的 `?t=...` 就是它，别把这个地址发给别人
+- 缺 token、token 不对、跨站（`Origin` 与 `Host` 不一致）的请求一律 403
+- 抓网址只走 `http/https`，端口限 80/443/8080/8443，域名解析出的 IP 必须是公网地址（内网、回环、保留地址直接拒绝），最多跟 3 次跳转且每次重新校验，正文超 2 MB 截断，超时 10 秒
+- 只扫描你有权限扫描的站点
+
+自己从源码打包：
+
+```powershell
+pip install pyinstaller
+powershell -ExecutionPolicy Bypass -File build.ps1
+```
+
+产物在 `dist\XSS扫描器\`，整个目录复制给别人即可。
+
 ## 功能
 
 - 污点分析：location / cookie / localStorage / postMessage 到 innerHTML / document.write / eval 等汇点，本地完成，不联网
 - 认框架模板：Vue `v-html`、Angular `[innerHTML]`、React `dangerouslySetInnerHTML`、Svelte `{@html}`、Handlebars `{{{ }}}`、lit-html `unsafeHTML`、`setAttribute('onclick', ...)`
 - 认常见的框架注入源：`$route.query`、`this.props`、`props.x`、`window.__INITIAL_STATE__` / `__NUXT__`、`document.location`
 - 大模型补充研判：输出风险等级、触发位置、修复建议
-- tkinter 界面，扫描跑在子线程，报告自动落盘 JSON + Markdown
+- 两种界面：tkinter 桌面窗口（扫描跑在子线程，报告自动落盘 JSON + Markdown），浏览器界面（拖文件或贴网址，打包成 exe 免装 Python）
 
 ## 工作原理
 
@@ -54,7 +76,7 @@ python main.py
 ## 测试
 
 ```bash
-pytest -q          # 97 passed
+pytest -q          # 109 passed
 ```
 
 | 文件 | 用例 | 覆盖 |
@@ -63,6 +85,7 @@ pytest -q          # 97 passed
 | `test_llm_pipeline.py` | 21 | 提示词契约、鉴权头、超时、输出解析与降级 |
 | `test_taint.py` | 44 | 污点传播、净化器、DOM 汇点与模板汇点、框架注入源、跨 script 不传播、同行去重 |
 | `test_eval.py` | 27 | 指标、bootstrap 区间、McNemar、语料完整性、Semgrep 结果映射 |
+| `test_webui.py` | 12 | 页面 token 鉴权、跨站拒绝、内网与错误协议拒绝、跳转次数、2 MB 截断、模型失败不影响静态结论 |
 
 `test_llm_pipeline.py` 用 `monkeypatch` 顶掉 `requests.post`，不发真实请求，所以能在无网 CI 里跑，也不花额度。
 覆盖的是模型调用最容易出事的几条路径：提示词是否带上来源与特征、是否声明全部输出字段、
@@ -75,7 +98,9 @@ pytest -q          # 97 passed
 - 没有针对真实 DeepSeek 接口的集成测试（需要额度，故意不进 CI）
 - 框架注入源只认一部分：`$route.query`、`this.props`、裸 `props.x`、`window.__INITIAL_STATE__` / `__NUXT__` / `__PRELOADED_STATE__` 等能识别；JSX 属性里的对象字面量、Svelte 的 `$page` store、Angular 的 `route.snapshot`、`window.__NEXT_DATA__` 仍漏，解构出来的 `props` 也不认
 - 不追踪对象属性访问与数组下标；例外是对象字面量里 `key: 污染值` 会传播，用来连上 Vue 的 `data`
-- 没有覆盖率门槛，也没有界面层测试
+- 没有覆盖率门槛；浏览器界面的鉴权与抓取护栏有测试，tkinter 界面仍没有
+- 抓网址的域名校验在解析时做，实际连接时系统会再解析一次，这中间存在 DNS rebinding 窗口，防的是「手滑填了内网地址」，不是恶意域名
+- 抓网址会从你的机器向目标站点发一次 GET，目标站点能看到你的出口 IP
 
 ## 评测
 
@@ -175,6 +200,10 @@ $env:SCANNER_DRY_RUN='1'; python main.py
 scanner_core.py            # 特征提取 / 脱敏截断 / 提示词构造 / 模型调用
 taint.py                   # 污点分析：来源→汇点，带行号，可单独 CLI 运行
 main.py                    # tkinter 界面 + 多线程调度 + 报告落盘
+webapp.py                  # 免安装版本的启动入口
+webui.py                   # 本地网页界面：鉴权、抓网址、调用分析
+page.html                  # 网页界面的前端（随 exe 打包）
+build.ps1                  # 打包成 Windows 免安装目录
 eval.py                    # 评测：heuristic / taint / hybrid / deepseek / semgrep
 BENCHMARK.md               # 方法、结果、局限与下一步
 eval/dataset.jsonl         # 50 条开发语料
@@ -188,6 +217,7 @@ test_scanner.py
 test_llm_pipeline.py
 test_taint.py
 test_eval.py
+test_webui.py
 docs/security-review/      # 本项目的安全审计记录
 pytest.ini                 # 测试收集范围
 requirements.txt

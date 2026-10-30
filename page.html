@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XSS 风险扫描器</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+         background: #0f1115; color: #d7dbe0; }
+  .wrap { width: min(980px, 92vw); margin: 0 auto; }
+  header { padding: 30px 0 6px; }
+  h1 { font-size: 20px; margin: 0 0 6px; font-weight: 600; }
+  .sub { color: #7c848f; font-size: 13px; margin: 0 0 22px; }
+  #drop { border: 1.5px dashed #2c3340; border-radius: 14px; padding: 44px 20px;
+          text-align: center; transition: .15s; background: #141821; cursor: pointer; }
+  #drop.hot { border-color: #4c8dff; background: #172033; }
+  #drop b { color: #eef2f7; }
+  #drop span { color: #7c848f; display: block; margin-top: 8px; font-size: 13px; }
+  .row { display: flex; gap: 10px; margin: 14px 0; align-items: center; flex-wrap: wrap; }
+  input[type=url], textarea { width: 100%; background: #141821; border: 1px solid #2c3340;
+          color: #d7dbe0; border-radius: 9px; padding: 11px 13px; font: inherit; }
+  textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  button { background: #2b6cf6; border: 0; color: #fff; border-radius: 9px; padding: 10px 18px;
+           font: inherit; cursor: pointer; }
+  button:disabled { background: #2a3340; color: #66707d; cursor: not-allowed; }
+  button.ghost { background: transparent; border: 1px solid #2c3340; color: #aeb6c2; }
+  label.chk { color: #9aa3ae; font-size: 13px; display: flex; gap: 7px; align-items: center; }
+  #out { margin: 26px 0 60px; }
+  .card { background: #141821; border: 1px solid #232a36; border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 20px;
+         letter-spacing: .04em; vertical-align: 2px; }
+  .HIGH { background: #43202a; color: #ff8d9e; }
+  .MEDIUM { background: #3d3418; color: #ffce6b; }
+  .ok { color: #6ee7a8; }
+  .warn { color: #ffce6b; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  pre { background: #0b0d11; border: 1px solid #232a36; border-radius: 9px; padding: 11px 13px;
+        overflow-x: auto; color: #c3cad4; margin: 8px 0 0; white-space: pre-wrap; word-break: break-all; }
+  .meta { color: #6f7885; font-size: 12.5px; }
+  .err { color: #ff8d9e; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>XSS 风险扫描器</h1>
+    <p class="sub">本地运行，静态分析不联网、不花钱。页面内容不会离开这台机器，除非你勾选模型研判。</p>
+  </header>
+
+  <div id="drop" tabindex="0">
+    <b>把 HTML 文件或网页链接拖到这里</b>
+    <span>也可以点击选择文件，或在下面粘贴网址 / 源码</span>
+    <input type="file" id="file" accept=".html,.htm,.txt" hidden>
+  </div>
+
+  <div class="row">
+    <input type="url" id="url" placeholder="或粘贴网址：https://example.com/page">
+    <button id="go">扫描网址</button>
+  </div>
+
+  <div class="row">
+    <textarea id="src" placeholder="或直接粘贴 HTML 源码…"></textarea>
+  </div>
+  <div class="row">
+    <button class="ghost" id="scan-src">扫描粘贴的源码</button>
+    <label class="chk"><input type="checkbox" id="llm"> 同时用大模型研判（需 DEEPSEEK_API_KEY，会联网并计费）</label>
+  </div>
+
+  <div id="out"></div>
+</div>
+<script>
+const TOKEN = new URLSearchParams(location.search).get("t") || "";
+const LLM_AVAILABLE = {{LLM_AVAILABLE}};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, function (c) {
+  return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c];
+});
+
+if (!LLM_AVAILABLE) { $("llm").disabled = true; $("llm").checked = false; $("llm").parentElement.title = "未检测到 DEEPSEEK_API_KEY"; }
+
+async function scan(payload) {
+  const out = $("out");
+  out.innerHTML = '<div class="card">扫描中…</div>';
+  payload.use_llm = $("llm").checked && LLM_AVAILABLE;
+  try {
+    const r = await fetch("/api/scan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Token": TOKEN},
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(function () { return {error: "服务返回了非 JSON 内容（HTTP " + r.status + "）"}; });
+    if (!r.ok || data.error) throw new Error(data.error || ("HTTP " + r.status));
+    render(data);
+  } catch (e) {
+    out.innerHTML = '<div class="card err">扫描失败：' + esc(e.message) + '</div>';
+  }
+}
+
+function render(d) {
+  const findings = d.findings || [];
+  const rows = findings.map(function (f) {
+    return '<div class="card">' +
+      '<div><span class="tag ' + esc(f.risk_level) + '">' + esc(f.risk_level) + '</span> ' +
+      '<b>' + esc(f.location) + '</b></div>' +
+      '<pre>' + esc(f.snippet || "") + '</pre>' +
+      '<div class="meta">' + esc(f.reason) + '</div>' +
+      '</div>';
+  }).join("");
+
+  const suspected = (d.suspected || []).map(function (s) {
+    return '<div class="card">' +
+      '<div><span class="tag MEDIUM">疑似</span> <b>' + esc(s.vulnerability_type || "未分类") + '</b> ' +
+      '<span class="meta">位置：' + esc(s.location || "未给出") + '</span></div>' +
+      '<div class="meta">' + esc(s.reason || "") + '</div>' +
+      '<div class="meta">修复：' + esc(s.fix_suggestion || "") + '</div>' +
+      '</div>';
+  }).join("");
+
+  const st = d.stats || {};
+  const stats = "脚本块 " + st.script_blocks + " · 内联事件 " + st.event_handlers +
+    " · 汇点 " + st.sinks_seen + " · 污点变量 " + st.tainted_vars + " · 模板汇点 " + st.template_sinks;
+  const note = d.fetch_note ? '<div class="meta">' + esc(d.fetch_note) + '</div>' : "";
+  const llmNote = d.llm_note ? '<div class="meta warn">' + esc(d.llm_note) + '</div>' : "";
+
+  $("out").innerHTML =
+    '<div class="card">' +
+      '<div class="' + (findings.length ? "warn" : "ok") + '"><b>' + esc(d.summary) + '</b></div>' +
+      '<div class="meta">来源：' + esc(d.source) + '</div>' +
+      '<div class="meta">' + esc(stats) + '</div>' + note + llmNote +
+    '</div>' +
+    rows +
+    (suspected ? '<div class="card"><b>模型研判（疑似，未经证明）</b></div>' + suspected : "") +
+    '<div class="row"><button class="ghost" id="copy">复制 JSON</button>' +
+      '<span class="meta">已证实 = 静态数据流能走通；疑似 = 模型判断，需人工复核</span></div>';
+  $("copy").onclick = function () { navigator.clipboard.writeText(JSON.stringify(d, null, 2)); };
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = function () { scan({mode: "html", html: String(reader.result), name: file.name}); };
+  reader.onerror = function () { alert("读文件失败"); };
+  reader.readAsText(file, "utf-8");
+}
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach(function (ev) {
+  drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("hot"); });
+});
+["dragleave", "drop"].forEach(function (ev) {
+  drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("hot"); });
+});
+drop.addEventListener("drop", function (e) {
+  const dt = e.dataTransfer;
+  if (dt.files && dt.files.length) { return readFile(dt.files[0]); }
+  const text = (dt.getData("text/uri-list") || dt.getData("text/plain") || "").trim();
+  if (/^https?:\/\//i.test(text)) { return scan({mode: "url", url: text}); }
+  if (text) { scan({mode: "html", html: text, name: "拖入的文本"}); }
+});
+drop.addEventListener("click", function () { $("file").click(); });
+drop.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { $("file").click(); } });
+$("file").addEventListener("change", function (e) { if (e.target.files[0]) { readFile(e.target.files[0]); } });
+$("go").addEventListener("click", function () {
+  const url = $("url").value.trim();
+  if (!url) { return alert("先填网址"); }
+  scan({mode: "url", url: url});
+});
+$("scan-src").addEventListener("click", function () {
+  const html = $("src").value;
+  if (!html.trim()) { return alert("先粘贴源码"); }
+  scan({mode: "html", html: html, name: "粘贴的源码"});
+});
+</script>
+</body>
+</html>
