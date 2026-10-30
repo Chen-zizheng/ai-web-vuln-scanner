@@ -26,7 +26,7 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024      # 单个页面正文上限
 MAX_REDIRECTS = 3
 FETCH_TIMEOUT = 10
 ALLOWED_PORTS = {80, 443, 8080, 8443}
-USER_AGENT = "xss-taint-scanner/1.0 (+local)"
+USER_AGENT = "xss-taint-scanner/1.1 (+local)"
 
 
 def _page_path() -> str:
