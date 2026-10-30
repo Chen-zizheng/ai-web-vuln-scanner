@@ -170,6 +170,14 @@ def backend_hybrid(html, features):
     return backend_heuristic(features)
 
 
+def backend_llm_union(html, features):
+    """污点分析优先，漏掉的交给大模型补。这才是产品实际跑的那条线。"""
+    static = backend_taint(html)
+    if static:
+        return static
+    return normalize_findings(backend_deepseek(scanner_core.build_prompt("eval:llm_union", features)))
+
+
 def backend_deepseek(prompt):
     return scanner_core.call_llm(prompt)
 
@@ -256,7 +264,7 @@ def evaluate_backend(backend, rows, dataset_path, use_cache=True):
     labels, preds, items, all_findings = [], [], [], []
     cache, dirty = {}, False
     cache_path = _cache_path(backend, dataset_path)
-    if backend == "deepseek" and use_cache and os.path.exists(cache_path):
+    if backend in ("deepseek", "llm_union") and use_cache and os.path.exists(cache_path):
         with open(cache_path, "r", encoding="utf-8") as f:
             cache = json.load(f)
 
@@ -279,6 +287,21 @@ def evaluate_backend(backend, rows, dataset_path, use_cache=True):
             findings = backend_taint(html)
         elif backend == "hybrid":
             findings = backend_hybrid(html, scanner_core.extract_features(html))
+        elif backend == "llm_union":
+            static = backend_taint(html)
+            if static:
+                findings = static          # 静态已证实，不必花钱问模型
+            elif sid in cache:
+                findings = cache[sid]
+            else:
+                features = scanner_core.extract_features(html)
+                prompt = scanner_core.build_prompt("eval:%s" % sid, features)
+                try:
+                    findings = normalize_findings(backend_deepseek(prompt))
+                except Exception as exc:
+                    findings = [{"error": "%s: %s" % (type(exc).__name__, exc)}]
+                cache[sid] = findings
+                dirty = True
         else:  # deepseek
             if sid in cache:
                 findings = cache[sid]
@@ -331,7 +354,7 @@ def evaluate_backend(backend, rows, dataset_path, use_cache=True):
         "avg_seconds_per_sample": round(elapsed / len(rows), 4) if rows else 0.0,
         "items": items,
     }
-    if backend == "deepseek":
+    if backend in ("deepseek", "llm_union"):
         record["schema"] = compute_schema_completeness(all_findings)
     record["labels"], record["preds"] = labels, preds
     return record
@@ -411,7 +434,7 @@ def render_report(records, dataset_paths, skipped=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="多后端对比评测")
     ap.add_argument("--backends", default=DEFAULT_BACKENDS,
-                    help="逗号分隔：heuristic,taint,hybrid,deepseek,semgrep")
+                    help="逗号分隔：heuristic,taint,hybrid,deepseek,llm_union,semgrep")
     ap.add_argument("--backend", default=None, help="旧参数，等价于 --backends <名字>")
     ap.add_argument("--dataset", action="append", default=None, help="可重复；默认两套语料")
     ap.add_argument("--limit", type=int, default=0, help="每套语料只跑前 N 条")
@@ -421,7 +444,7 @@ def main(argv=None):
     if args.backend:
         args.backends = args.backend
     backends = [b.strip() for b in args.backends.split(",") if b.strip()]
-    unknown = [b for b in backends if b not in ("heuristic", "taint", "hybrid", "deepseek", "semgrep")]
+    unknown = [b for b in backends if b not in ("heuristic", "taint", "hybrid", "deepseek", "llm_union", "semgrep")]
     if unknown:
         raise SystemExit("未知后端：%s" % ", ".join(unknown))
 
