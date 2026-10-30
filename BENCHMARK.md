@@ -129,8 +129,11 @@ v2 把「汇点」这一类补完了，卡住召回的不再是汇点，而是"�
 
 ## 没跑的两个后端（以及为什么写在这里而不是藏起来）
 
-- **semgrep**：本机没装、沙箱无出网装不了。规则文件已经写好（eval/semgrep-xss.yaml），
-  装好后 `python eval.py --backends taint,semgrep` 即可得到同基线对比。
+- **semgrep**：试过了，没跑成。装上 `semgrep 1.183.0` 之后每个语料都返回退出码 2
+  （`error.py:38` 的 `FATAL_EXIT_CODE`），stderr 为空。最可能的原因是仓库路径含中文
+  （`D:\deepharnes\04-求职\项目集\AI漏洞扫描器`），而 Semgrep 的 OCaml 核心在 Windows 上
+  处理非 ASCII 路径有已知问题；尚未验证。规则文件已经写好（eval/semgrep-xss.yaml），
+  在纯英文路径下装好 semgrep 后 `python eval.py --backends taint,semgrep` 应当能出数字。
 - **deepseek**：需要 API key 与网络。命令是 `python eval.py --backends deepseek`，
   结果会进 eval/cache/ 供复跑。
 

@@ -156,7 +156,7 @@ python eval.py --backends taint,semgrep    # 需要先 pip install semgrep
 - 第三轮是衡量当前代码的唯一一套：v1 在第一轮 0.2857，v2 在第二轮 0.8889，v3 在第三轮 0.8235。中间那两次都是在修上一轮暴露的洞，修完那一轮就不算数了。
 - 第三轮漏掉的 3 条仍然具体：JSX 属性里的对象字面量、Svelte 的 `$page` store、Angular 的 `route.snapshot`，已记入上面的已知缺口。
 - 混合后端的 0.9000 比 0.8235 高，是靠多一条误报（`ho3-012`，`DOMPurify` 净化后的模板绑定）换来的。
-- Semgrep 与 DeepSeek 两个后端还没有实测数字（前者要装 semgrep，后者要 key 与网络），在此之前不做对比结论。
+- Semgrep 与 DeepSeek 两个后端还没有实测数字（前者装上了但退出码 2 跑不起来、疑似中文路径，后者要 key 与网络），在此之前不做对比结论。
 
 ## 数据边界
 
