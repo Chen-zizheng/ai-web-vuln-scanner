@@ -8,10 +8,10 @@
 
 ```bash
 pip install -r requirements.txt
-python main.py
+python webapp.py
 ```
 
-默认只跑静态分析，不联网、不花钱。勾「同时用大模型研判」才会把页面特征发给 DeepSeek。
+浏览器会自动打开界面，地址里带一次性 token。默认只跑静态分析，不联网、不花钱。勾「同时用大模型研判」才会把页面特征发给 DeepSeek。
 
 ## 它怎么判
 
@@ -33,7 +33,7 @@ python main.py
 目标 HTML ──► taint.analyze()      ──► 已证实（行号 + 数据流）
           │
           ├──► extract_features()  ──► build_prompt() ──► call_llm() ──► 疑似
-          └──► 报告（JSON + Markdown）
+          └──► 报告（界面内展示，可复制 JSON）
 ```
 
 除 `call_llm` 外每一环都是纯函数，能脱离界面单独测。
@@ -96,10 +96,10 @@ python eval.py --backends taint,semgrep         # 要先 pip install semgrep
 - `MAX_SCRIPT_CHARS = 1500`：单个 `<script>` 正文超长截断，并标注截掉多少
 - `MAX_PROMPT_CHARS = 20000`：提示词超预算直接抛 `ValueError`，不组装请求
 
-页面文件另有 2 MB 上限，超了在读之前就拒。报告落盘用净化后的特征。想先看实际发什么：
+页面文件另有 2 MB 上限，超了在读之前就拒。想先看实际发什么：
 
 ```powershell
-$env:SCANNER_DRY_RUN='1'; python main.py
+$env:SCANNER_DRY_RUN='1'; python webapp.py
 ```
 
 这时 `call_llm` 不联网，把最终 payload 写到 `output/payload_*.json`。
@@ -125,7 +125,7 @@ $env:SCANNER_DRY_RUN='1'; python main.py
 ## 测试
 
 ```bash
-pytest -q          # 137 passed，约 8 秒
+pytest -q          # 129 passed，约 8 秒
 ```
 
 | 文件 | 用例 | 测的是什么 |
@@ -135,30 +135,29 @@ pytest -q          # 137 passed，约 8 秒
 | `tests/test_taint.py` | 48 | 污点传播、净化器、DOM 汇点、模板汇点、框架注入源、跨 script 不传播 |
 | `tests/test_eval.py` | 27 | 指标、bootstrap 区间、McNemar、语料完整性、Semgrep 结果映射 |
 | `tests/test_webui.py` | 22 | token 鉴权、跨站拒绝、内网与错误协议、跳转次数、2 MB 截断、Key 传递 |
-| `tests/test_desktop.py` | 11 | 报告字段清洗与落盘、启动参数解析 |
+| `tests/test_webapp.py` | 3 | 启动参数解析 |
 
 模型调用在测试里被 `monkeypatch` 顶掉了，不发真请求，所以无网 CI 也能跑，不烧额度。
 
-行覆盖率 71%（`scanner_core.py` 100%、`webapp.py` 94%、`taint.py` 82%、`webui.py` 69%、`main.py` 30%）。没设门槛，逐层设计写在 [TESTING.md](TESTING.md)。
+行覆盖率 81%（`scanner_core.py` 100%、`webapp.py` 94%、`taint.py` 83%、`webui.py` 69%）。没设门槛，逐层设计写在 [TESTING.md](TESTING.md)。
 
 ## 目录
 
 ```
 scanner_core.py     # 特征提取、脱敏截断、提示词构造、模型调用
 taint.py            # 污点分析：来源到汇点，带行号，可单独跑 CLI
-main.py             # 桌面界面 + 子线程调度 + 报告落盘
-webapp.py           # 免安装版的启动入口
+webapp.py           # 启动入口：起本地服务并打开浏览器
 webui.py            # 本地网页界面：鉴权、抓网址、调用分析
 page.html           # 网页界面的前端，随 exe 打包
 build.ps1           # 打包成 Windows 免安装目录
 eval.py             # 评测：heuristic / taint / hybrid / deepseek / llm_union / semgrep
-tests/              # 137 个用例，按模块分文件
+tests/              # 129 个用例，按模块分文件
 eval/               # 五套语料、标注规则、Semgrep 规则
 docs/               # 设计决策、界面截图
 BENCHMARK.md        # 方法与结果、置信区间、McNemar、没跑的后端
 TESTING.md          # 测试分层、覆盖率、用例方法、缺陷记录、冒烟脚本
 ```
 
-`.github/workflows/test.yml` 在 Python 3.12 上跑 pytest 并打印覆盖率。那个 runner 没有 `_tkinter`，`tests/test_desktop.py` 会整体跳过。
+`.github/workflows/test.yml` 在 Python 3.12 上跑 pytest 并打印覆盖率。
 
 MIT，见 [LICENSE](LICENSE)。
