@@ -76,6 +76,14 @@ def test_build_prompt_declares_all_output_fields():
         assert field in prompt, f"提示词缺少输出字段 {field}"
 
 
+def test_build_prompt_asks_for_xss_only():
+    """提示词的范围就是评测的范围：越界报后端漏洞会被算成误报。"""
+    prompt = scanner_core.build_prompt("a.html", FEATURES)
+    assert "只判 XSS" in prompt or "只判XSS" in prompt
+    assert "SQL_INJECTION" not in prompt
+    assert "SQL 注入、命令注入" in prompt
+
+
 def test_build_prompt_accepts_empty_features():
     """空特征不应抛异常——空页面也要能走完流程。"""
     prompt = scanner_core.build_prompt("a.html", {})
