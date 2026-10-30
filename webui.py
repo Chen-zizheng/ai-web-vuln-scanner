@@ -42,6 +42,17 @@ def page_bytes() -> bytes:
     return html.replace("{{LLM_AVAILABLE}}", flag).encode("utf-8")
 
 
+def _status_hint(code: int) -> str:
+    if code in (401, 403):
+        return ("目标返回 HTTP %d：站点拒绝了非浏览器请求（反爬、需要登录或需要 JS 渲染）。"
+                "在浏览器里打开这个页面，Ctrl+S 另存为 HTML，再把文件拖进来扫描。" % code)
+    if code == 429:
+        return "目标返回 HTTP 429：被限流了，等一会儿再试。"
+    if 300 <= code < 400:
+        return "目标返回 HTTP %d：这种跳转方式无法跟随。" % code
+    return "目标返回 HTTP %d" % code
+
+
 class FetchError(Exception):
     """抓取失败，消息直接展示给用户。"""
 
@@ -77,8 +88,10 @@ def fetch_page(url: str) -> tuple[str, str]:
         _assert_public_host(parsed.hostname)
 
         try:
-            resp = requests.get(url, timeout=FETCH_TIMEOUT, stream=True,
-                                allow_redirects=False, headers={"User-Agent": USER_AGENT})
+            resp = requests.get(url, timeout=FETCH_TIMEOUT, stream=True, allow_redirects=False,
+                                headers={"User-Agent": USER_AGENT,
+                                         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                                         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"})
         except requests.RequestException as exc:
             raise FetchError("请求失败：%s" % exc)
 
@@ -90,7 +103,8 @@ def fetch_page(url: str) -> tuple[str, str]:
             url = urljoin(url, location)
             continue
         if resp.status_code >= 400:
-            raise FetchError("目标返回 HTTP %d" % resp.status_code)
+            resp.close()
+            raise FetchError(_status_hint(resp.status_code))
 
         ctype = (resp.headers.get("Content-Type") or "").lower()
         if ctype and "html" not in ctype and "text/" not in ctype:
@@ -112,6 +126,10 @@ def fetch_page(url: str) -> tuple[str, str]:
             resp.close()
 
         raw = b"".join(chunks)
+        if not raw.strip():
+            resp.close()
+            raise FetchError("目标返回了空页面：内容由 JavaScript 在浏览器里渲染，抓下来没有可分析的 HTML。"
+                             "请在浏览器里打开这个页面，Ctrl+S 另存为 HTML，再把文件拖进来。")
         text = raw.decode(resp.encoding or "utf-8", errors="replace")
         note = "已按 2 MB 截断" if truncated else "抓取成功"
         return text, note

@@ -249,3 +249,19 @@ def test_page_labels_static_and_ai_sections(server):
     body = _get(server[1], "/?t=test-token")[1]
     assert "静态分析 · 已证实" in body
     assert "大模型研判 · 疑似" in body
+
+
+def test_fetch_403_suggests_saving_page(monkeypatch):
+    monkeypatch.setattr(webui, "_assert_public_host", lambda host: None)
+    monkeypatch.setattr(webui.requests, "get",
+                        lambda *a, **k: FakeResponse(status=403, chunks=[b"denied"]))
+    with pytest.raises(webui.FetchError, match="另存为 HTML"):
+        webui.fetch_page("https://platform.example.com/api_keys")
+
+
+def test_fetch_empty_body_rejected(monkeypatch):
+    monkeypatch.setattr(webui, "_assert_public_host", lambda host: None)
+    monkeypatch.setattr(webui.requests, "get",
+                        lambda *a, **k: FakeResponse(status=200, chunks=[b"   \n"]))
+    with pytest.raises(webui.FetchError, match="空页面"):
+        webui.fetch_page("https://spa.example.com/")
