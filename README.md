@@ -196,6 +196,8 @@ API Key 本身也是数据边界的一部分：界面里粘贴的 key 只随这�
 
 上面「数据边界」的脱敏与 2 MB 输入上限，就是这次审计的产物。
 
+每个决定的原因与代价——上限取值、汇点分级、三轮留出集、打包方式、接口鉴权——写在 [docs/design-decisions.md](docs/design-decisions.md)。
+
 ## 持续集成
 
 `.github/workflows/test.yml` 在 Python 3.12 上跑 `pytest`，触发条件是 push 到 main 和 PR。
@@ -225,6 +227,7 @@ test_taint.py
 test_eval.py
 test_webui.py
 docs/security-review/      # 本项目的安全审计记录
+docs/design-decisions.md   # 设计决策与取舍：每个选择的原因和代价
 pytest.ini                 # 测试收集范围
 requirements.txt
 ```
