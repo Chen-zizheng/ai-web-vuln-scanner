@@ -451,7 +451,7 @@ def _finding(sink_name, level, context, taint, html, base, offset):
     return {
         "vulnerability_type": "XSS",
         "risk_level": level,
-        "location": "第 %d 行：%s" % (line, snippet),
+        "location": "第 %d 行" % line,
         "snippet": snippet,
         "reason": "%s 未经转义进入 %s" % (taint, sink_name),
         "fix_suggestion": _FIX.get(context, "对输出做上下文相关转义"),

@@ -39,6 +39,8 @@ def save_report(source: str, features: dict, analysis: dict) -> Path:
             md_lines.append(f"- **结论**: {_md_field(item.get('confidence', 'suspected'))}"
                             f"（{_md_field(item.get('detector', 'llm'), 20)}）\n")
             md_lines.append(f"- **位置**: {_md_field(item.get('location', 'N/A'))}\n")
+            if item.get("snippet"):
+                md_lines.append(f"- **代码**: `{_md_field(item['snippet'], 200)}`\n")
             md_lines.append(f"- **原因**: {_md_field(item.get('reason', 'N/A'))}\n")
             md_lines.append(f"- **修复**: {_md_field(item.get('fix_suggestion', 'N/A'))}\n")
     else:
@@ -173,7 +175,7 @@ class ScannerApp:
                 item["detector"] = "taint"
             self.log_msg(f"  发现 {len(static)} 条已证实的数据流通路")
             for item in static:
-                self.log_msg(f"    [已证实] {item['risk_level']} {item['location']}")
+                self.log_msg(f"    [已证实] {item['risk_level']} {item['location']} {item.get('snippet', '')}")
 
             self.log_msg("[4/5] 脱敏与截断...")
             safe_features, stats = prepare_features(features)
