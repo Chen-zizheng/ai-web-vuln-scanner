@@ -11,7 +11,9 @@ eval/bench.json
 eval/report.md
 build/
 dist/
+dist_dbg/
 release/
 *.spec
 *.log
 smoke*.ps1
+tmp/
