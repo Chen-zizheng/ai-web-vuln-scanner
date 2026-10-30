@@ -259,14 +259,40 @@ def _template_exprs(text):
         i = j
 
 
+def _sanitized_spans(toks, a, b):
+    """找出被净化函数包住的 token 区间 [(lo, hi)]，用于只豁免它自己的实参。
+
+    `sanitize(a) + location.hash` 里只有前者安全：净化函数担保的是传进去的那个值，
+    不是整条表达式。旧实现一见到函数名就判定整段安全，这类真实绕过会漏报。
+    """
+    spans = []
+    i = a
+    while i < b:
+        t = toks[i]
+        if (t["k"] == "id" and t["v"] in _SANITIZERS
+                and i + 1 < b and toks[i + 1]["k"] == "punct" and toks[i + 1]["v"] == "("):
+            depth, j = 0, i + 1
+            while j < b:
+                if toks[j]["k"] == "punct" and toks[j]["v"] == "(":
+                    depth += 1
+                elif toks[j]["k"] == "punct" and toks[j]["v"] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            spans.append((i, j + 1))
+            i = j + 1
+            continue
+        i += 1
+    return spans
+
+
 def _taint_of(toks, a, b, env):
     """判断 toks[a:b] 这段表达式的值是否可控，可控则返回来源描述。"""
     if b <= a:
         return None
     for idx in range(a, b):
         t = toks[idx]
-        if t["k"] == "id" and t["v"] in _SANITIZERS:
-            return None            # 已过净化函数，视为安全
         if t["k"] == "str" and t["q"] == BT:
             for expr in _template_exprs(t["v"]):
                 sub = _tokenize(expr)
@@ -274,8 +300,16 @@ def _taint_of(toks, a, b, env):
                 if got:
                     return got
 
+    sanitized = _sanitized_spans(toks, a, b)
+
+    def covered(i):
+        return any(lo <= i < hi for lo, hi in sanitized)
+
     i = a
     while i < b:
+        if covered(i):
+            i += 1
+            continue
         span, label = _source_at(toks, i)
         if span and i + span <= b:
             return label
@@ -413,10 +447,12 @@ def _line_at(html, base, offset):
 
 def _finding(sink_name, level, context, taint, html, base, offset):
     line = _line_at(html, base, offset)
+    snippet = _snippet_at(html, offset, base)
     return {
         "vulnerability_type": "XSS",
         "risk_level": level,
-        "location": "第 %d 行：%s" % (line, _snippet_at(html, offset, base)),
+        "location": "第 %d 行：%s" % (line, snippet),
+        "snippet": snippet,
         "reason": "%s 未经转义进入 %s" % (taint, sink_name),
         "fix_suggestion": _FIX.get(context, "对输出做上下文相关转义"),
         "confidence": "confirmed",

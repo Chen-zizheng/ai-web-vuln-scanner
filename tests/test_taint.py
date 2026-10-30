@@ -55,6 +55,42 @@ def test_dompurify_stops_flow():
     assert hit(html) == []
 
 
+def test_sanitizer_only_covers_its_own_argument():
+    """净化函数担保的是传进去的那个值，不是整条表达式。
+
+    `sanitize(a) + location.hash` 是真实绕过：拼接之后结果又被污染了。旧实现只要表达式
+    区间里出现净化函数名就整段放行，这类写法会漏报。
+    """
+    html = ("<script>\n"
+            "var a = document.referrer;\n"
+            "document.getElementById('x').innerHTML = DOMPurify.sanitize(a) + location.hash;\n"
+            "</script>")
+    findings = hit(html)
+    assert len(findings) == 1
+    assert "location.hash" in findings[0]["reason"]
+
+
+def test_sanitizer_does_not_mask_other_taint_in_eval():
+    html = "<script>eval(sanitize(a) + location.search);</script>"
+    assert len(hit(html)) == 1
+
+
+def test_expression_with_only_sanitizers_is_quiet():
+    html = "<script>document.getElementById('x').innerHTML = sanitize(a) + escapeHtml(b);</script>"
+    assert hit(html) == []
+
+
+def test_finding_carries_snippet_for_the_ui():
+    """page.html 渲染 f.snippet，缺这个字段前端代码框永远是空的。"""
+    html = ("<script>\n"
+            "var h = location.hash;\n"
+            "document.getElementById('x').innerHTML = h;\n"
+            "</script>")
+    findings = hit(html)
+    assert len(findings) == 1
+    assert findings[0]["snippet"] == "document.getElementById('x').innerHTML = h;"
+
+
 def test_textcontent_is_not_a_sink():
     html = "<script>document.getElementById('x').textContent = location.hash;</script>"
     assert hit(html) == []

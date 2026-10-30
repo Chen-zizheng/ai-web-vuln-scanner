@@ -115,8 +115,13 @@ def extract_features(html: str) -> dict:
     }
 
 
-def build_prompt(source: str, features: dict) -> str:
-    safe, _stats = prepare_features(features)
+def build_prompt(source: str, features: dict, *, prepared: bool = False) -> str:
+    """组装提示词。features 若是 prepare_features() 的返回值，传 prepared=True。
+
+    不传也行，内部会再净化一次——代价是截断标记被当成正文再截一遍，
+    提示词里标注的截断字符数就不准了。
+    """
+    safe, _stats = (features, {}) if prepared else prepare_features(features)
     payload = json.dumps(safe, ensure_ascii=False, indent=2)
     source_label = " ".join(str(source).split())[:300]
     prompt = f"""你是一个 Web 安全分析助手。请根据以下信息判断页面中可能存在的 XSS 和 SQL 注入风险点。

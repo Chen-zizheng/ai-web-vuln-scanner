@@ -183,7 +183,7 @@ class ScannerApp:
             self.set_status("分析中，请稍候...")
             llm_findings = []
             try:
-                prompt = build_prompt(path, safe_features)
+                prompt = build_prompt(path, safe_features, prepared=True)
                 self.log_msg(f"  提示词 {len(prompt)} 字符（上限 {MAX_PROMPT_CHARS}）")
                 raw = call_llm(prompt)
                 llm_findings = raw if isinstance(raw, list) else ([raw] if isinstance(raw, dict) else [])
