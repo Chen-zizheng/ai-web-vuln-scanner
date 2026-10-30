@@ -109,7 +109,7 @@ $env:SCANNER_DRY_RUN='1'; python main.py
 
 ## 安装
 
-**Windows 免安装版**：到 [Releases](https://github.com/Chen-zizheng/ai-web-vuln-scanner/releases) 下 `XSS-scanner-windows-x64.zip`，解压，双击 `XSS扫描器.exe`。浏览器自动打开界面，没打开就看解压目录里的 `界面地址.txt`。
+**Windows 免安装版**：到 [Releases](https://github.com/Chen-zizheng/xss-taint-scanner/releases) 下 `XSS-scanner-windows-x64.zip`，解压，双击 `XSS扫描器.exe`。浏览器自动打开界面，没打开就看解压目录里的 `界面地址.txt`。
 
 界面收三种输入：拖 HTML 文件、粘网址、粘源码。
 
