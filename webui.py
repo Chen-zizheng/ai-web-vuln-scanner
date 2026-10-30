@@ -26,7 +26,7 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024      # 单个页面正文上限，和 main.py
 MAX_REDIRECTS = 3
 FETCH_TIMEOUT = 10
 ALLOWED_PORTS = {80, 443, 8080, 8443}
-USER_AGENT = "ai-web-vuln-scanner/1.0 (+local)"
+USER_AGENT = "xss-taint-scanner/1.0 (+local)"
 
 
 def _page_path() -> str:
@@ -176,7 +176,7 @@ def scan_html(html: str, source: str, use_llm: bool = False, api_key: str = "") 
 
 class Handler(BaseHTTPRequestHandler):
     token = ""
-    server_version = "ai-web-vuln-scanner"
+    server_version = "xss-taint-scanner"
 
     def log_message(self, fmt, *args):  # 安静一点，别把每次请求都打到 stderr
         if "--verbose" in sys.argv:
