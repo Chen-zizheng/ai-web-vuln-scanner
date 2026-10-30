@@ -79,7 +79,7 @@ main.py           165 语句  116 未覆盖    29.7%
 | D-6 | 高 | `DOMPurify.sanitize(a) + location.hash` 这类「净化函数 + 真实污点」被判安全，真实绕过漏报 | `_taint_of` 只要区间里出现净化函数名就整段放行 | `_sanitized_spans()` 只豁免净化函数自己的实参 | `test_sanitizer_only_covers_its_own_argument`、`test_sanitizer_does_not_mask_other_taint_in_eval`、`test_expression_with_only_sanitizers_is_quiet` |
 | D-7 | 中 | 网页界面的代码框永远是空的 | `_finding()` 不产出 `snippet` 字段，前端却在渲染它 | 补 `snippet` | `test_finding_carries_snippet_for_the_ui` |
 
-D-1、D-2 来自 `docs/security-review/` 的审计结论，D-3、D-4、D-5 来自发布前的实际使用，D-6、D-7 来自评测时对漏报的逐条复核。
+D-1、D-2 来自发布前对本项目做的一次安全审计（只读源码加本地实验，不向任何线上服务发请求），D-3、D-4、D-5 来自实际使用，D-6、D-7 来自评测时对漏报的逐条复核。
 
 ## 6. 发布冒烟（不进 CI）
 

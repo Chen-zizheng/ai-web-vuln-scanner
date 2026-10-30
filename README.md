@@ -155,7 +155,7 @@ build.ps1           # 打包成 Windows 免安装目录
 eval.py             # 评测：heuristic / taint / hybrid / deepseek / llm_union / semgrep
 tests/              # 136 个用例，按模块分文件
 eval/               # 五套语料、标注规则、Semgrep 规则
-docs/               # 审计记录、设计决策、界面截图
+docs/               # 设计决策、界面截图
 BENCHMARK.md        # 方法与结果、置信区间、McNemar、没跑的后端
 TESTING.md          # 测试分层、覆盖率、用例方法、缺陷记录、冒烟脚本
 ```
