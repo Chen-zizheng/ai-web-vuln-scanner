@@ -272,18 +272,23 @@ def parse_qs_token(query: str) -> str:
     return ""
 
 
-def _announce(url: str) -> None:
-    print("界面地址：%s" % url)
-    print("按 Ctrl+C 退出。")
-    if not getattr(sys, "frozen", False):
-        return
-    # 打包成 exe 后没有控制台，把地址落一个文件，浏览器被拦时还能手动打开
+def _write_addr_file(url: str) -> None:
     path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "界面地址.txt")
     try:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(url + "\n")
     except OSError:
         pass
+
+
+def _announce(url: str) -> None:
+    # 打包成 exe 后没有控制台：sys.stdout 是 None，print() 会直接抛 AttributeError 并让进程退出，
+    # 所以先落文件，别指望终端
+    if getattr(sys, "frozen", False):
+        _write_addr_file(url)
+        return
+    print("界面地址：%s" % url)
+    print("按 Ctrl+C 退出。")
 
 
 def _open_browser(url: str) -> None:
