@@ -19,20 +19,28 @@
   #drop b { color: #eef2f7; }
   #drop span { color: #7c848f; display: block; margin-top: 8px; font-size: 13px; }
   .row { display: flex; gap: 10px; margin: 14px 0; align-items: center; flex-wrap: wrap; }
-  input[type=url], textarea { width: 100%; background: #141821; border: 1px solid #2c3340;
+  input[type=url], input[type=password], textarea { width: 100%; background: #141821; border: 1px solid #2c3340;
           color: #d7dbe0; border-radius: 9px; padding: 11px 13px; font: inherit; }
+  input[type=password] { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
   textarea { min-height: 110px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
   button { background: #2b6cf6; border: 0; color: #fff; border-radius: 9px; padding: 10px 18px;
            font: inherit; cursor: pointer; }
   button:disabled { background: #2a3340; color: #66707d; cursor: not-allowed; }
   button.ghost { background: transparent; border: 1px solid #2c3340; color: #aeb6c2; }
   label.chk { color: #9aa3ae; font-size: 13px; display: flex; gap: 7px; align-items: center; }
+  .panel { background: #12161e; border: 1px solid #232a36; border-radius: 12px; padding: 14px 16px 4px; margin: 18px 0; }
+  .panel-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .panel-head b { color: #eef2f7; font-weight: 600; }
   #out { margin: 26px 0 60px; }
   .card { background: #141821; border: 1px solid #232a36; border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  .card.static { border-left: 3px solid #2f9e6f; }
+  .card.ai { border-left: 3px solid #c9871f; }
   .tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 20px;
          letter-spacing: .04em; vertical-align: 2px; }
   .HIGH { background: #43202a; color: #ff8d9e; }
   .MEDIUM { background: #3d3418; color: #ffce6b; }
+  .STATIC { background: #17372b; color: #6ee7a8; }
+  .AI { background: #3a2c14; color: #ffce6b; }
   .ok { color: #6ee7a8; }
   .warn { color: #ffce6b; }
   code, pre { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
@@ -40,19 +48,38 @@
         overflow-x: auto; color: #c3cad4; margin: 8px 0 0; white-space: pre-wrap; word-break: break-all; }
   .meta { color: #6f7885; font-size: 12.5px; }
   .err { color: #ff8d9e; }
+  .sect { display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+          margin: 26px 0 2px; padding-bottom: 6px; border-bottom: 1px solid #1e242e; }
+  .sect b { font-size: 15px; font-weight: 600; }
+  .empty { color: #6f7885; font-size: 13px; padding: 10px 2px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>XSS 风险扫描器</h1>
-    <p class="sub">本地运行，静态分析不联网、不花钱。页面内容不会离开这台机器，除非你勾选模型研判。</p>
+    <p class="sub">本地运行，静态分析不联网、不花钱。页面内容不会离开这台机器，除非你启用大模型研判。</p>
   </header>
 
   <div id="drop" tabindex="0">
     <b>把 HTML 文件或网页链接拖到这里</b>
     <span>也可以点击选择文件，或在下面粘贴网址 / 源码</span>
     <input type="file" id="file" accept=".html,.htm,.txt" hidden>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <b>大模型研判（可选）</b>
+      <span class="meta">对拖文件、扫网址、扫源码三种方式都生效；启用后会联网，按 token 计费</span>
+    </div>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="llm"> 同时用大模型研判</label>
+      <span class="meta" id="llm-hint">未填 Key，只能用静态分析</span>
+    </div>
+    <div class="row">
+      <input type="password" id="key" autocomplete="off" spellcheck="false"
+             placeholder="粘贴 DeepSeek API Key：只经过本机回环请求、只用于本次扫描，不写硬盘、不进报告、刷新即消失">
+    </div>
   </div>
 
   <div class="row">
@@ -65,11 +92,6 @@
   </div>
   <div class="row">
     <button class="ghost" id="scan-src">扫描粘贴的源码</button>
-    <label class="chk"><input type="checkbox" id="llm"> 同时用大模型研判（会联网并按 token 计费）</label>
-  </div>
-  <div class="row">
-    <input type="password" id="key" autocomplete="off" spellcheck="false"
-           placeholder="DeepSeek API Key（可选）：粘贴后即可勾选大模型研判；只存在本页内存里，不写硬盘、不进报告">
   </div>
 
   <div id="out"></div>
@@ -87,10 +109,14 @@ function syncLlm() {
   const pasted = $("key").value.trim().length > 0;
   const usable = LLM_AVAILABLE || pasted;
   $("llm").disabled = !usable;
-  if (!usable) $("llm").checked = false;
-  $("llm").parentElement.title = usable
-    ? (LLM_AVAILABLE ? "环境变量里已配置 Key" : "将使用你粘贴的 Key，仅本次运行有效")
-    : "先在上面填入 API Key";
+  if (!usable) { $("llm").checked = false; }
+  if (LLM_AVAILABLE) {
+    $("llm-hint").textContent = "已从环境变量读到 Key，可直接勾选";
+  } else if (pasted) {
+    $("llm-hint").textContent = "将使用你粘贴的 Key，仅本次运行有效";
+  } else {
+    $("llm-hint").textContent = "未填 Key，只能用静态分析";
+  }
 }
 $("key").addEventListener("input", syncLlm);
 syncLlm();
@@ -100,7 +126,7 @@ async function scan(payload) {
   out.innerHTML = '<div class="card">扫描中…</div>';
   payload.use_llm = $("llm").checked && !$("llm").disabled;
   const pasted = $("key").value.trim();
-  if (payload.use_llm && pasted) payload.api_key = pasted;
+  if (payload.use_llm && pasted) { payload.api_key = pasted; }
   try {
     const r = await fetch("/api/scan", {
       method: "POST",
@@ -108,49 +134,84 @@ async function scan(payload) {
       body: JSON.stringify(payload)
     });
     const data = await r.json().catch(function () { return {error: "服务返回了非 JSON 内容（HTTP " + r.status + "）"}; });
-    if (!r.ok || data.error) throw new Error(data.error || ("HTTP " + r.status));
+    if (!r.ok || data.error) { throw new Error(data.error || ("HTTP " + r.status)); }
     render(data);
   } catch (e) {
     out.innerHTML = '<div class="card err">扫描失败：' + esc(e.message) + '</div>';
   }
 }
 
+function findCard(f) {
+  return '<div class="card static">' +
+    '<div><span class="tag STATIC">静态</span> ' +
+    '<span class="tag ' + esc(f.risk_level) + '">' + esc(f.risk_level) + '</span> ' +
+    '<b>' + esc(f.location) + '</b></div>' +
+    '<pre>' + esc(f.snippet || "") + '</pre>' +
+    '<div class="meta">' + esc(f.reason) + '</div>' +
+    '</div>';
+}
+
+function susCard(s) {
+  return '<div class="card ai">' +
+    '<div><span class="tag AI">AI</span> ' +
+    '<span class="tag ' + esc(s.risk_level || "MEDIUM") + '">' + esc(s.risk_level || "MEDIUM") + '</span> ' +
+    '<b>' + esc(s.vulnerability_type || "未分类") + '</b> ' +
+    '<span class="meta">位置：' + esc(s.location || "未给出") + '</span></div>' +
+    '<div class="meta">' + esc(s.reason || "") + '</div>' +
+    '<div class="meta">修复：' + esc(s.fix_suggestion || "") + '</div>' +
+    '</div>';
+}
+
+function llmStatus(llm) {
+  if (!llm || !llm.requested) {
+    return '<div class="meta">大模型：未启用 —— 本次只有静态结果</div>';
+  }
+  if (llm.dry_run) {
+    return '<div class="warn">大模型：dry-run 模式，payload 已落盘，未联网</div>';
+  }
+  if (llm.error) {
+    return '<div class="err">大模型：调用失败 —— ' + esc(llm.error) + '</div>';
+  }
+  return '<div class="ok">大模型：已调用 ' + esc(llm.model || "deepseek") + '，返回 ' +
+    esc(String(llm.count)) + ' 条疑似</div>';
+}
+
 function render(d) {
   const findings = d.findings || [];
-  const rows = findings.map(function (f) {
-    return '<div class="card">' +
-      '<div><span class="tag ' + esc(f.risk_level) + '">' + esc(f.risk_level) + '</span> ' +
-      '<b>' + esc(f.location) + '</b></div>' +
-      '<pre>' + esc(f.snippet || "") + '</pre>' +
-      '<div class="meta">' + esc(f.reason) + '</div>' +
-      '</div>';
-  }).join("");
-
-  const suspected = (d.suspected || []).map(function (s) {
-    return '<div class="card">' +
-      '<div><span class="tag MEDIUM">疑似</span> <b>' + esc(s.vulnerability_type || "未分类") + '</b> ' +
-      '<span class="meta">位置：' + esc(s.location || "未给出") + '</span></div>' +
-      '<div class="meta">' + esc(s.reason || "") + '</div>' +
-      '<div class="meta">修复：' + esc(s.fix_suggestion || "") + '</div>' +
-      '</div>';
-  }).join("");
-
+  const suspected = d.suspected || [];
+  const llm = d.llm || {};
   const st = d.stats || {};
   const stats = "脚本块 " + st.script_blocks + " · 内联事件 " + st.event_handlers +
     " · 汇点 " + st.sinks_seen + " · 污点变量 " + st.tainted_vars + " · 模板汇点 " + st.template_sinks;
   const note = d.fetch_note ? '<div class="meta">' + esc(d.fetch_note) + '</div>' : "";
-  const llmNote = d.llm_note ? '<div class="meta warn">' + esc(d.llm_note) + '</div>' : "";
 
-  $("out").innerHTML =
+  const summary =
     '<div class="card">' +
       '<div class="' + (findings.length ? "warn" : "ok") + '"><b>' + esc(d.summary) + '</b></div>' +
       '<div class="meta">来源：' + esc(d.source) + '</div>' +
-      '<div class="meta">' + esc(stats) + '</div>' + note + llmNote +
-    '</div>' +
-    rows +
-    (suspected ? '<div class="card"><b>模型研判（疑似，未经证明）</b></div>' + suspected : "") +
+      '<div class="meta">' + esc(stats) + '</div>' + note +
+      llmStatus(llm) +
+    '</div>';
+
+  const staticSect =
+    '<div class="sect"><b>静态分析 · 已证实</b>' +
+      '<span class="meta">共 ' + findings.length + ' 条 · 本地数据流，带行号，可复现</span></div>' +
+    (findings.length ? findings.map(findCard).join("")
+                     : '<div class="empty">没有走通的数据流。这不等于是安全的，只说明静态规则没命中。</div>');
+
+  let aiSect = "";
+  if (llm.requested) {
+    aiSect =
+      '<div class="sect"><b>大模型研判 · 疑似</b>' +
+        '<span class="meta">共 ' + suspected.length + ' 条 · 模型判断，未经证明，需人工复核</span></div>' +
+      (suspected.length ? suspected.map(susCard).join("")
+        : (llm.error ? '<div class="empty">这次没有模型结论（调用失败，原因见上）。</div>'
+                     : '<div class="empty">模型没给出额外的疑似项。</div>'));
+  }
+
+  $("out").innerHTML = summary + staticSect + aiSect +
     '<div class="row"><button class="ghost" id="copy">复制 JSON</button>' +
-      '<span class="meta">已证实 = 静态数据流能走通；疑似 = 模型判断，需人工复核</span></div>';
+      '<span class="meta">静态 = 数据流能走通；AI = 模型判断，可被页面内容影响</span></div>';
   $("copy").onclick = function () { navigator.clipboard.writeText(JSON.stringify(d, null, 2)); };
 }
 

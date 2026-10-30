@@ -207,3 +207,45 @@ def test_scan_rejects_oversized_api_key(server):
     status, _ = _post(server[1], {"mode": "html", "html": "<b>x</b>",
                                   "use_llm": True, "api_key": "sk-" + "a" * 300})
     assert status == 400
+
+
+def test_scan_reports_llm_not_requested(server):
+    status, data = _post(server[1], {"mode": "html", "html": "<b>x</b>"})
+    assert status == 200
+    assert data["llm"]["requested"] is False
+    assert data["llm"]["ok"] is False
+    assert data["llm"]["count"] == 0
+
+
+def test_scan_reports_llm_success(server, monkeypatch):
+    def fake_call_llm(prompt, api_key=""):
+        return [{"risk_level": "MEDIUM", "vulnerability_type": "XSS", "location": "x",
+                 "reason": "r", "fix_suggestion": "f"}]
+
+    monkeypatch.setattr(webui.scanner_core, "call_llm", fake_call_llm)
+    status, data = _post(server[1], {"mode": "html", "html": "<b>x</b>", "use_llm": True,
+                                     "api_key": "sk-x"})
+    assert status == 200
+    assert data["llm"]["requested"] is True
+    assert data["llm"]["ok"] is True
+    assert data["llm"]["count"] == 1
+    assert data["llm"]["model"]
+
+
+def test_scan_reports_llm_failure_reason(server, monkeypatch):
+    def boom(prompt, api_key=""):
+        raise Exception("401 Unauthorized")
+
+    monkeypatch.setattr(webui.scanner_core, "call_llm", boom)
+    status, data = _post(server[1], {"mode": "html", "html": "<b>x</b>", "use_llm": True,
+                                     "api_key": "sk-x"})
+    assert status == 200
+    assert data["llm"]["requested"] is True
+    assert data["llm"]["ok"] is False
+    assert "401" in data["llm"]["error"]
+
+
+def test_page_labels_static_and_ai_sections(server):
+    body = _get(server[1], "/?t=test-token")[1]
+    assert "静态分析 · 已证实" in body
+    assert "大模型研判 · 疑似" in body

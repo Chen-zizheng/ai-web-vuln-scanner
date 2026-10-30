@@ -128,6 +128,8 @@ def scan_html(html: str, source: str, use_llm: bool = False, api_key: str = "") 
         "summary": taint.summarize(result["findings"]),
         "suspected": [],
         "llm_note": "",
+        "llm": {"requested": bool(use_llm), "ok": False, "dry_run": False,
+                "model": scanner_core.MODEL, "count": 0, "error": ""},
         "truncated": len(html) > MAX_UPLOAD_BYTES,
     }
     if use_llm:
@@ -137,12 +139,20 @@ def scan_html(html: str, source: str, use_llm: bool = False, api_key: str = "") 
             answer = scanner_core.call_llm(prompt, api_key=api_key)
             if isinstance(answer, dict) and answer.get("dry_run"):
                 payload["llm_note"] = "dry-run：payload 已落盘，未联网"
+                payload["llm"]["ok"] = True
+                payload["llm"]["dry_run"] = True
             elif isinstance(answer, list):
                 payload["suspected"] = [x for x in answer if isinstance(x, dict)]
             elif isinstance(answer, dict):
                 payload["suspected"] = [answer]
+            if payload["suspected"]:
+                payload["llm"]["ok"] = True
+            elif not payload["llm"]["dry_run"]:
+                payload["llm"]["ok"] = True
+            payload["llm"]["count"] = len(payload["suspected"])
         except Exception as exc:  # 模型这一层失败不影响静态结论
             payload["llm_note"] = "模型研判失败：%s" % exc
+            payload["llm"]["error"] = str(exc)
     return payload
 
 
