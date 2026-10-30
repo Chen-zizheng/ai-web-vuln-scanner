@@ -13,7 +13,7 @@
 | 数据集回归 | 五套语料 × 五个后端 | 检测能力有没有退化，漏报多了哪几条 | 15 行指标表 |
 | 发布冒烟 | 打包后的 exe | 别人下载下来双击能不能用 | 手动脚本，见第 6 节 |
 
-前四层在 `pytest` 里（`132 passed`），第五层不在自动化里——打包产物必须有人真的双击一次，
+前四层在 `pytest` 里（`136 passed`），第五层不在自动化里——打包产物必须有人真的双击一次，
 这一层抓到过一个单元测试永远抓不到的 bug（见第 5 节 D-3）。
 
 ## 2. 覆盖率（实测，不美化）
@@ -76,8 +76,10 @@ main.py           165 语句  116 未覆盖    29.7%
 | D-3 | 高 | 打包后的 exe 双击立即退出，什么都不显示 | `--noconsole` 下 `sys.stdout` 是 `None`，`print` 抛异常 | 改为写同目录 `界面地址.txt` | 第 6 节冒烟脚本：真启动、取地址、出页面、POST 扫描 |
 | D-4 | 中 | 目标站点返回 403 或纯前端空壳时，工具给出「0 条」的假结论 | 只判 `status_code >= 400`，未处理空正文 | `_status_hint()` 按状态码给处置建议；空正文直接拒绝 | `test_fetch_403_suggests_saving_page`、`test_fetch_empty_body_rejected` |
 | D-5 | 低 | 界面粘贴超长 key 时行为未定义 | 未校验请求体字段 | 非字符串或超 200 字符返回 400 | `test_key_too_long_rejected` |
+| D-6 | 高 | `DOMPurify.sanitize(a) + location.hash` 这类「净化函数 + 真实污点」被判安全，真实绕过漏报 | `_taint_of` 只要区间里出现净化函数名就整段放行 | `_sanitized_spans()` 只豁免净化函数自己的实参 | `test_sanitizer_only_covers_its_own_argument`、`test_sanitizer_does_not_mask_other_taint_in_eval`、`test_expression_with_only_sanitizers_is_quiet` |
+| D-7 | 中 | 网页界面的代码框永远是空的 | `_finding()` 不产出 `snippet` 字段，前端却在渲染它 | 补 `snippet` | `test_finding_carries_snippet_for_the_ui` |
 
-D-1、D-2 来自 `docs/security-review/` 的审计结论，D-3、D-4、D-5 来自发布前的实际使用。
+D-1、D-2 来自 `docs/security-review/` 的审计结论，D-3、D-4、D-5 来自发布前的实际使用，D-6、D-7 来自评测时对漏报的逐条复核。
 
 ## 6. 发布冒烟（不进 CI）
 
@@ -96,7 +98,7 @@ Get-Content "dist\XSS扫描器\界面地址.txt"          # 应当出现 http://
 ## 7. 怎么跑
 
 ```bash
-pytest -q                                        # 132 passed，约 8 秒
+pytest -q                                        # 136 passed，约 8 秒
 pip install pytest-cov coverage
 pytest -q --cov=scanner_core --cov=taint --cov=webui --cov=main --cov=webapp --cov-report=term-missing
 ```
