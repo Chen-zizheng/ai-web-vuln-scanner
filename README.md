@@ -2,10 +2,9 @@
 
 丢一个 HTML 文件或网址进去，出来一份 XSS 报告。纯静态分析给「已证实」的结论，带行号，离线可复现；大模型给「疑似」，扩召回，需要人复核。
 
-<img width="1663" height="1341" alt="image" src="https://github.com/user-attachments/assets/8b752267-4505-4c5a-bb7b-db11541291aa" />
-<img width="1615" height="1351" alt="image" src="https://github.com/user-attachments/assets/2d08eb16-0924-4bde-add0-5c814347568b" />
+![界面：拖文件、粘贴网址或直接贴源码](docs/screenshot-ui.png)
 
-
+![报告：上面是静态分析确认的通路，下面是大模型给的疑似项](docs/screenshot-findings.png)
 
 ```bash
 pip install -r requirements.txt
